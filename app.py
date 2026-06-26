@@ -29,51 +29,87 @@ st.title("🤖 My Intelligent Trading Sathi")
 
 if not st.session_state.fyers:
     st.info("Step 1: Get Auth Code from Fyers")
+
     login_url = f"https://api.fyers.in/api/v2/generate-authcode?client_id={APP_ID}&redirect_uri={REDIRECT_URL}&response_type=code&state=sample_state"
     st.markdown(f"**[👉 Click here to Login to Fyers]({login_url})**")
-    
+
     auth_code = st.text_input("Step 2: Paste the 'auth_code' here:")
-    
+
     if st.button("Generate Access Token"):
         try:
-            session = SessionModel(client_id=APP_ID, secret_key=SECRET_KEY, redirect_uri=REDIRECT_URL, response_type="code", grant_type="authorization_code")
+            session = SessionModel(
+                client_id=APP_ID,
+                secret_key=SECRET_KEY,
+                redirect_uri=REDIRECT_URL,
+                response_type="code",
+                grant_type="authorization_code"
+            )
             session.set_token(auth_code)
             response = session.generate_token()
             access_token = response["access_token"]
-            st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=access_token, log_path="")
+
+            st.session_state.fyers = fyersModel.FyersModel(
+                client_id=APP_ID,
+                token=access_token,
+                log_path=""
+            )
             st.success("Login Successful!")
             st.rerun()
-        except:
-            st.error("Login failed: Check Credentials or Code.")
+        except Exception as e:
+            st.error(f"Login failed: {e}")
+
 else:
     st.success("✅ Sathi is Monitoring...")
+
     if st.button("Logout"):
         st.session_state.fyers = None
         st.rerun()
 
     placeholder = st.empty()
-    symbols = ["NSE:RELIANCE-EQ", "NSE:SBIN-EQ", "NSE:TATASTEEL-EQ", "NSE:INFY-EQ", "NSE:HDFCBANK-EQ"]
-    
-    while True:
-        now = datetime.now()
-        with placeholder.container():
-            st.write(f"⏳ Last Scan: {now.strftime('%H:%M:%S')}")
-            for sym in symbols:
-                try:
-                    from_d = (now - timedelta(days=3)).strftime('%Y-%m-%d')
-                    to_d = now.strftime('%Y-%m-%d')
-                    data = {"symbol": sym, "resolution": "15", "date_format": "1", "range_from": from_d, "range_to": to_d, "cont_flag": "1"}
-                    res = st.session_state.fyers.history(data)
-                    if res and res.get('s') == 'ok':
-                        df = pd.DataFrame(res['candles'], columns=['ts', 'o', 'h', 'l', 'c', 'v'])
-                        # Calculating EMA using standard pandas (No pandas-ta needed)
-                        df['EMA20'] = df['c'].ewm(span=20, adjust=False).mean()
-                        lc = df['c'].iloc[-1]
-                        ev = df['EMA20'].iloc[-1]
-                        if lc > ev * 1.005:
-                            send_telegram_msg(f"🚀 BUY: {sym} at {lc}")
-                        elif lc < ev * 0.995:
-                            send_telegram_msg(f"📉 SELL: {sym} at {lc}")
-                except: continue
-        time.sleep(300)
-        st.rerun()
+
+    symbols = [
+        "NSE:RELIANCE-EQ",
+        "NSE:SBIN-EQ",
+        "NSE:TATASTEEL-EQ",
+        "NSE:INFY-EQ",
+        "NSE:HDFCBANK-EQ"
+    ]
+
+    now = datetime.now()
+    with placeholder.container():
+        st.write(f"⏳ Last Scan: {now.strftime('%H:%M:%S')}")
+
+        for sym in symbols:
+            try:
+                from_d = (now - timedelta(days=3)).strftime('%Y-%m-%d')
+                to_d = now.strftime('%Y-%m-%d')
+
+                data = {
+                    "symbol": sym,
+                    "resolution": "15",
+                    "date_format": "1",
+                    "range_from": from_d,
+                    "range_to": to_d,
+                    "cont_flag": "1"
+                }
+
+                res = st.session_state.fyers.history(data)
+
+                if res and res.get('s') == 'ok':
+                    df = pd.DataFrame(res['candles'], columns=['ts', 'o', 'h', 'l', 'c', 'v'])
+                    df['EMA20'] = df['c'].ewm(span=20, adjust=False).mean()
+
+                    lc = df['c'].iloc[-1]
+                    ev = df['EMA20'].iloc[-1]
+
+                    if lc > ev * 1.005:
+                        st.write(f"🚀 BUY: {sym} at {lc}")
+                        send_telegram_msg(f"🚀 BUY: {sym} at {lc}")
+                    elif lc < ev * 0.995:
+                        st.write(f"📉 SELL: {sym} at {lc}")
+                        send_telegram_msg(f"📉 SELL: {sym} at {lc}")
+
+            except Exception as e:
+                st.warning(f"Error for {sym}: {e}")
+
+    st.info("Refresh the app manually or add auto-refresh logic carefully.")
