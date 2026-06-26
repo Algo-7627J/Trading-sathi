@@ -1,4 +1,3 @@
 fyers-apiv3
 pandas
-pandas-ta
 requests
