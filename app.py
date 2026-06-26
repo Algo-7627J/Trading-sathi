@@ -25,6 +25,18 @@ DEFAULT_SYMBOLS = [
     "NSE:SHRIRAMFIN-EQ", "NSE:BAJAJ-AUTO-EQ", "NSE:LTIM-EQ", "NSE:TRENT-EQ", "NSE:BEL-EQ"
 ]
 
+# Commodities (MCX) - Gold, Silver, Crude Oil
+# NOTE: Exact symbol names/expiry change every month. Update these to the
+# current active contract from FYERS symbol master if scan shows API Error.
+COMMODITY_SYMBOLS = [
+    "MCX:GOLD25JULFUT",       # Gold
+    "MCX:GOLDM25JULFUT",      # Gold Mini
+    "MCX:SILVER25JULFUT",     # Silver
+    "MCX:SILVERM25JULFUT",    # Silver Mini
+    "MCX:CRUDEOIL25JULFUT",   # Crude Oil
+    "MCX:CRUDEOILM25JULFUT",  # Crude Oil Mini
+]
+
 
 # ---------------- TELEGRAM FUNCTION ----------------
 def send_telegram_msg(message):
@@ -71,10 +83,10 @@ def scan_symbols(fyers, symbols):
                     signal = "HOLD"
                     if last_close > ema20 * 1.005:
                         signal = "BUY"
-                        send_telegram_msg(f"🚀 BUY: {sym} at {last_close}")
+                        send_telegram_msg(f"\U0001F680 BUY: {sym} at {last_close}")
                     elif last_close < ema20 * 0.995:
                         signal = "SELL"
-                        send_telegram_msg(f"📉 SELL: {sym} at {last_close}")
+                        send_telegram_msg(f"\U0001F4C9 SELL: {sym} at {last_close}")
 
                     results.append({
                         "Symbol": sym,
@@ -94,7 +106,7 @@ def scan_symbols(fyers, symbols):
                     "Symbol": sym,
                     "Last Close": "-",
                     "EMA20": "-",
-                    "Signal": f"API Error"
+                    "Signal": "API Error"
                 })
 
         except Exception as e:
@@ -110,7 +122,7 @@ def scan_symbols(fyers, symbols):
 
 # ---------------- PAGE SETUP ----------------
 st.set_page_config(page_title="Trading Sathi", layout="wide")
-st.title("🤖 Trading Sathi - F&O Universe Scanner")
+st.title("\U0001F916 Trading Sathi - F&O + Commodity Scanner")
 
 if "fyers" not in st.session_state:
     st.session_state.fyers = None
@@ -139,7 +151,7 @@ if st.session_state.fyers is None:
             )
 
             login_url = session.generate_authcode()
-            st.markdown(f"**[👉 Click here to Login to FYERS]({login_url})**")
+            st.markdown(f"**[\U0001F449 Click here to Login to FYERS]({login_url})**")
         except Exception as e:
             st.error(f"Unable to generate FYERS login URL: {e}")
 
@@ -184,12 +196,12 @@ if st.session_state.fyers is None:
 
 # ---------------- DASHBOARD SECTION ----------------
 else:
-    st.success("✅ Connected to FYERS")
+    st.success("\u2705 Connected to FYERS")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("Scan Full F&O Stock Universe"):
+        if st.button("Scan Full Universe (Stocks + Commodities)"):
             st.session_state.run_scan = True
 
     with col2:
@@ -199,16 +211,21 @@ else:
             st.session_state.run_scan = False
             st.rerun()
 
-    st.subheader("Editable F&O Universe Symbols")
+    st.subheader("Editable Symbols (Stocks + Gold / Silver / Crude Oil)")
+    default_text = "\n".join(DEFAULT_SYMBOLS + COMMODITY_SYMBOLS)
     symbol_text = st.text_area(
         "One symbol per line",
-        value="\n".join(DEFAULT_SYMBOLS),
+        value=default_text,
         height=400
     )
 
     symbols = [s.strip() for s in symbol_text.split("\n") if s.strip()]
 
     st.write(f"Total symbols to scan: {len(symbols)}")
+    st.caption(
+        "Note: MCX commodity symbols (GOLD/SILVER/CRUDEOIL) have a monthly expiry in the name. "
+        "If you see 'API Error', update them to the current active contract."
+    )
 
     if st.session_state.run_scan:
         st.session_state.run_scan = False
