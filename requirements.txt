@@ -2,6 +2,3 @@ streamlit
 fyers-apiv3
 pandas
 requests
-git add app.py requirements.txt
-git commit -m "Fix Streamlit app and dependencies"
-git push
