@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import pandas_ta as ta
 from fyers_apiv3 import fyersModel
 from fyers_apiv3.FyersModel import SessionModel
 import time
@@ -67,7 +66,8 @@ else:
                     res = st.session_state.fyers.history(data)
                     if res and res.get('s') == 'ok':
                         df = pd.DataFrame(res['candles'], columns=['ts', 'o', 'h', 'l', 'c', 'v'])
-                        df['EMA20'] = ta.ema(df['c'], length=20)
+                        # Calculating EMA using standard pandas (No pandas-ta needed)
+                        df['EMA20'] = df['c'].ewm(span=20, adjust=False).mean()
                         lc = df['c'].iloc[-1]
                         ev = df['EMA20'].iloc[-1]
                         if lc > ev * 1.005:
