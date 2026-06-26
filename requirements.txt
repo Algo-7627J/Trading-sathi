@@ -1,3 +1,4 @@
 fyers-apiv3
 pandas
 requests
+fyers-apiv3
