@@ -20,11 +20,31 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-SCAN_RESOLUTION = "15"
-CONFIRM_RESOLUTION = "5"
-HTF_RESOLUTION = "60"
-LOOKBACK_DAYS = 20
+LOOKBACK_DAYS = 30
 NEWS_LOOKBACK_DAYS = 2
+
+TIMEFRAME_OPTIONS = {
+    "5 min only": {
+        "primary": "5",
+        "confirm": None,
+        "label": "5m"
+    },
+    "5 min + 15 min": {
+        "primary": "5",
+        "confirm": "15",
+        "label": "5m + 15m"
+    },
+    "15 min + 1 hr": {
+        "primary": "15",
+        "confirm": "60",
+        "label": "15m + 1h"
+    },
+    "1 hr + 4 hr": {
+        "primary": "60",
+        "confirm": "240",
+        "label": "1h + 4h"
+    },
+}
 
 WEIGHTS = {
     "technical": 25,
@@ -36,6 +56,9 @@ WEIGHTS = {
     "fundamental": 3,
     "results": 2,
 }
+
+CONFIRMATION_BONUS = 12
+CONFIRMATION_PENALTY = 10
 
 STRONG_BUY_THRESHOLD = 55
 BUY_THRESHOLD = 20
