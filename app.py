@@ -6,7 +6,7 @@ try:
 except Exception:
     fyersModel = None
 
-from config import APP_ID, SECRET_KEY, REDIRECT_URL
+from config import APP_ID, SECRET_KEY, REDIRECT_URL, TIMEFRAME_OPTIONS
 from services import build_universe
 from analysis import scan_universe
 from storage import ensure_data_files, save_latest_scan, append_signal_history
@@ -17,7 +17,7 @@ inject_custom_css()
 ensure_data_files()
 
 st.title("🤖 Trading Sathi - Intraday + 2 Day Smart Scanner")
-st.caption("Technical + Momentum + Volume + Multi-candle Patterns + OI + News")
+st.caption("Technical + Momentum + Volume + Multi-candle Patterns + OI + News + Multi-Timeframe Confirmation")
 
 for k, v in [("fyers", None), ("access_token", None), ("run_scan", False)]:
     if k not in st.session_state:
@@ -25,6 +25,7 @@ for k, v in [("fyers", None), ("access_token", None), ("run_scan", False)]:
 
 if st.session_state.fyers is None:
     st.info("Step 1: Login to FYERS and get auth code")
+
     if fyersModel is None:
         st.error("fyers_apiv3 library not installed. Add it in requirements.txt")
     elif not APP_ID or not SECRET_KEY or not REDIRECT_URL:
@@ -68,6 +69,7 @@ if st.session_state.fyers is None:
                     st.error(f"Token generation failed: {response}")
             except Exception as e:
                 st.error(f"Login failed: {e}")
+
 else:
     st.success("✅ Connected to FYERS")
 
@@ -81,17 +83,33 @@ else:
     m4.metric("Total", len(uni["all"]))
 
     st.subheader("Scan Settings")
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
+
     with c1:
         scope = st.selectbox(
             "Universe to scan",
-            ["Everything (Stocks + Index + Commodity)", "Only F&O Stocks", "Only Index Futures", "Only Commodities"],
+            [
+                "Everything (Stocks + Index + Commodity)",
+                "Only F&O Stocks",
+                "Only Index Futures",
+                "Only Commodities",
+            ],
         )
+
     with c2:
-        include_news = st.checkbox("Include News", value=True)
+        timeframe_mode = st.selectbox(
+            "Timeframe Mode",
+            list(TIMEFRAME_OPTIONS.keys()),
+            index=2
+        )
+
     with c3:
-        include_fund = st.checkbox("Include Fundamental/Results (optional)", value=False)
+        include_news = st.checkbox("Include News", value=True)
+
     with c4:
+        include_fund = st.checkbox("Include Fundamental/Results", value=False)
+
+    with c5:
         limit = st.number_input("Max symbols (0 = all)", min_value=0, value=25, step=5)
 
     if scope == "Only F&O Stocks":
@@ -110,6 +128,7 @@ else:
         symbols = symbols[:limit]
 
     st.write(f"Symbols queued for scan: **{len(symbols)}**")
+    st.info(f"Selected Timeframe Mode: **{timeframe_mode}**")
 
     a, b = st.columns(2)
     with a:
@@ -130,11 +149,13 @@ else:
             df = scan_universe(
                 st.session_state.fyers,
                 symbols,
+                timeframe_mode=timeframe_mode,
                 include_news=include_news,
                 include_fundamental=include_fund,
                 progress=prog,
             )
             prog.empty()
+
             save_latest_scan(df)
             append_signal_history(df)
 
@@ -146,10 +167,12 @@ else:
 
                 buy = df_sorted[df_sorted["Signal"].isin(["STRONG BUY", "BUY"])]
                 sell = df_sorted[df_sorted["Signal"].isin(["STRONG SELL", "SELL"])]
+
                 x, y = st.columns(2)
                 with x:
                     st.subheader(f"🟢 BUY ({len(buy)})")
                     display_signal_table(buy)
+
                 with y:
                     st.subheader(f"🔴 SELL ({len(sell)})")
                     display_signal_table(sell)
@@ -168,15 +191,22 @@ else:
             """
             This scanner is built for **intraday and max 2-day holding ideas**.
 
-            Core factors used:
+            ### Timeframe modes available
+            - **5 min only**
+            - **5 min + 15 min**
+            - **15 min + 1 hr**
+            - **1 hr + 4 hr**
+
+            ### Core factors used
             - Technical Trend
             - Momentum
             - Volume
             - Multi-candle chart patterns
             - OI analysis
             - News sentiment
+            - Multi-timeframe confirmation
 
-            Multi-candle patterns included:
+            ### Multi-candle patterns included
             - Cup and Handle
             - Double Bottom / Double Top
             - Triangle Breakout / Breakdown
