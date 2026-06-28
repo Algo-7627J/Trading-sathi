@@ -3,7 +3,6 @@ from __future__ import annotations
 import pandas as pd
 
 from config import (
-    SCAN_RESOLUTION,
     LOOKBACK_DAYS,
     WEIGHTS,
     STRONG_BUY_THRESHOLD,
@@ -12,14 +11,19 @@ from config import (
     STRONG_SELL_THRESHOLD,
     NEWS_POSITIVE_KEYWORDS,
     NEWS_NEGATIVE_KEYWORDS,
+    TIMEFRAME_OPTIONS,
+    CONFIRMATION_BONUS,
+    CONFIRMATION_PENALTY,
 )
 from services import fetch_history, fetch_quote, fetch_news_for_symbol
 from patterns import detect_patterns
+from storage import should_send_alert
 
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     close = df["c"]
+
     df["EMA20"] = close.ewm(span=20, adjust=False).mean()
     df["EMA50"] = close.ewm(span=50, adjust=False).mean()
     df["EMA200"] = close.ewm(span=200, adjust=False).mean()
@@ -45,18 +49,21 @@ def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
     tr3 = (df["l"] - df["c"].shift()).abs()
     df["TR"] = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
     df["ATR14"] = df["TR"].rolling(14).mean()
+
     df["VOL_AVG20"] = df["v"].rolling(20).mean()
     df["VOL_RATIO"] = df["v"] / df["VOL_AVG20"].replace(0, 1e-9)
     return df
 
 
-def analyze_technical_bundle(fyers, sym: str):
-    res = fetch_history(fyers, sym, resolution=SCAN_RESOLUTION, days=LOOKBACK_DAYS)
+def analyze_single_timeframe(fyers, sym: str, resolution: str):
+    res = fetch_history(fyers, sym, resolution=resolution, days=LOOKBACK_DAYS)
     if not (res and res.get("s") == "ok" and res.get("candles")):
         return None
+
     df = pd.DataFrame(res["candles"], columns=["ts", "o", "h", "l", "c", "v"])
     if len(df) < 40:
         return None
+
     df = compute_indicators(df)
     last = df.iloc[-1]
 
@@ -67,10 +74,10 @@ def analyze_technical_bundle(fyers, sym: str):
     trend_votes.append(1 if last["c"] > last["VWAP"] else -1)
     trend_score = sum(trend_votes) / len(trend_votes)
 
-    momentum_votes = []
     rsi = float(last["RSI"]) if pd.notna(last["RSI"]) else 50.0
     macd_hist = float(last["MACD_HIST"]) if pd.notna(last["MACD_HIST"]) else 0.0
-    momentum_votes.append(1 if macd_hist > 0 else -1)
+
+    momentum_votes = [1 if macd_hist > 0 else -1]
     if rsi > 60:
         momentum_votes.append(1)
     elif rsi < 40:
@@ -92,10 +99,17 @@ def analyze_technical_bundle(fyers, sym: str):
     pattern = detect_patterns(df)
     pattern_score = pattern.get("score", 0.0)
 
+    direction_score = trend_score + momentum_score + pattern_score
+    if direction_score > 0.3:
+        direction = "BULLISH"
+    elif direction_score < -0.3:
+        direction = "BEARISH"
+    else:
+        direction = "NEUTRAL"
+
     note = (
-        f"EMA20={last['EMA20']:.2f}, EMA50={last['EMA50']:.2f}, EMA200={last['EMA200']:.2f}, "
-        f"RSI={rsi:.1f}, MACD_H={macd_hist:.3f}, VWAP={'above' if last['c'] > last['VWAP'] else 'below'}, "
-        f"VolRatio={vol_ratio:.2f}"
+        f"TF={resolution}m, EMA20={last['EMA20']:.2f}, EMA50={last['EMA50']:.2f}, "
+        f"RSI={rsi:.1f}, MACD_H={macd_hist:.3f}, VolRatio={vol_ratio:.2f}"
     )
 
     return {
@@ -106,8 +120,51 @@ def analyze_technical_bundle(fyers, sym: str):
         "volume_score": round(volume_score, 2),
         "pattern": pattern,
         "pattern_score": round(pattern_score, 2),
+        "direction": direction,
         "note": note,
+        "resolution": resolution,
     }
+
+
+def analyze_multi_timeframe(fyers, sym: str, mode_label: str):
+    mode = TIMEFRAME_OPTIONS[mode_label]
+    primary_res = mode["primary"]
+    confirm_res = mode["confirm"]
+    tf_label = mode["label"]
+
+    primary = analyze_single_timeframe(fyers, sym, primary_res)
+    if primary is None:
+        return None
+
+    confirm = None
+    mtf_status = "Primary Only"
+    adjusted_pattern_score = primary["pattern_score"]
+
+    if confirm_res:
+        confirm = analyze_single_timeframe(fyers, sym, confirm_res)
+        if confirm:
+            if primary["direction"] == confirm["direction"] and primary["direction"] != "NEUTRAL":
+                mtf_status = "Confirmed"
+                if adjusted_pattern_score >= 0:
+                    adjusted_pattern_score += CONFIRMATION_BONUS / 100
+                else:
+                    adjusted_pattern_score -= CONFIRMATION_BONUS / 100
+            elif primary["direction"] != "NEUTRAL" and confirm["direction"] != "NEUTRAL":
+                mtf_status = "Conflict"
+                if adjusted_pattern_score >= 0:
+                    adjusted_pattern_score -= CONFIRMATION_PENALTY / 100
+                else:
+                    adjusted_pattern_score += CONFIRMATION_PENALTY / 100
+            else:
+                mtf_status = "Mixed"
+        else:
+            mtf_status = "No Confirm Data"
+
+    primary["pattern_score"] = round(adjusted_pattern_score, 2)
+    primary["confirm"] = confirm
+    primary["mtf_status"] = mtf_status
+    primary["timeframe_label"] = tf_label
+    return primary
 
 
 def analyze_oi(fyers, sym: str):
@@ -119,10 +176,13 @@ def analyze_oi(fyers, sym: str):
         oi = v.get("oi")
         prev_oi = v.get("pdoi")
         chp = v.get("chp")
+
         if oi is None or chp is None:
             return {"score": None, "note": "oi n/a"}
+
         oi_up = (prev_oi is not None and oi > prev_oi)
         price_up = chp > 0
+
         if price_up and oi_up:
             return {"score": 1.0, "note": "Long buildup"}
         if (not price_up) and oi_up:
@@ -132,6 +192,7 @@ def analyze_oi(fyers, sym: str):
         if (not price_up) and (not oi_up):
             return {"score": -0.5, "note": "Long unwinding"}
         return {"score": 0.0, "note": "Neutral"}
+
     except Exception as e:
         return {"score": None, "note": f"err:{e}"}
 
@@ -139,12 +200,18 @@ def analyze_oi(fyers, sym: str):
 def analyze_news(base: str):
     articles = fetch_news_for_symbol(base)
     if not articles:
-        return {"score": None, "sentiment": "N/A", "strength": "N/A", "headline": "No recent news", "note": "n/a"}
+        return {
+            "score": None,
+            "sentiment": "N/A",
+            "strength": "N/A",
+            "headline": "No recent news",
+            "note": "n/a"
+        }
 
     score = 0
-    combined_text = " ".join([
-        ((a.get("title") or "") + " " + (a.get("description") or "")) for a in articles
-    ]).lower()
+    combined_text = " ".join(
+        [((a.get("title") or "") + " " + (a.get("description") or "")) for a in articles]
+    ).lower()
 
     for kw in NEWS_POSITIVE_KEYWORDS:
         if kw in combined_text:
@@ -157,7 +224,7 @@ def analyze_news(base: str):
         s = 1.0
         sentiment = "Positive"
         strength = "Strong"
-    elif score == 1 or score == 2:
+    elif score in [1, 2]:
         s = 0.5
         sentiment = "Positive"
         strength = "Moderate"
@@ -165,7 +232,7 @@ def analyze_news(base: str):
         s = -1.0
         sentiment = "Negative"
         strength = "Strong"
-    elif score == -1 or score == -2:
+    elif score in [-1, -2]:
         s = -0.5
         sentiment = "Negative"
         strength = "Moderate"
@@ -207,6 +274,7 @@ def combine_scores(tech, oi, news, fund=None, result=None):
         ("fundamental", fund.get("score") if fund else None),
         ("results", result.get("score") if result else None),
     ]
+
     total_w = 0
     acc = 0.0
     for key, sc in parts:
@@ -214,8 +282,10 @@ def combine_scores(tech, oi, news, fund=None, result=None):
             w = WEIGHTS[key]
             acc += sc * w
             total_w += w
+
     if total_w == 0:
         return None
+
     return round((acc / total_w) * 100, 1)
 
 
@@ -236,6 +306,7 @@ def score_to_signal(score):
 def score_to_probabilities(score):
     if score is None:
         return None, None
+
     bullish = round((score + 100) / 2, 1)
     bullish = max(0.0, min(100.0, bullish))
     bearish = round(100.0 - bullish, 1)
@@ -244,28 +315,55 @@ def score_to_probabilities(score):
 
 def build_reason(tech, oi, news, signal):
     chunks = [signal]
+
     if tech:
+        chunks.append(f"TF Mode: {tech.get('timeframe_label')}")
+        chunks.append(f"MTF: {tech.get('mtf_status')}")
+
         patt = tech.get("pattern", {})
         if patt.get("pattern") and patt.get("pattern") != "None":
-            chunks.append(f"Pattern: {patt.get('pattern')} ({patt.get('confidence')})")
-        chunks.append(f"Tech: trend {tech.get('trend_score')}, momentum {tech.get('momentum_score')}, volume {tech.get('volume_score')}")
+            chunks.append(
+                f"Pattern: {patt.get('pattern')} on {tech.get('resolution')}m ({patt.get('confidence')})"
+            )
+
+        confirm = tech.get("confirm")
+        if confirm:
+            chunks.append(
+                f"Confirm TF: {confirm.get('resolution')}m / {confirm.get('direction')}"
+            )
+
+        chunks.append(
+            f"Tech: trend {tech.get('trend_score')}, momentum {tech.get('momentum_score')}, volume {tech.get('volume_score')}"
+        )
+
     if oi and oi.get("note"):
         chunks.append(f"OI: {oi.get('note')}")
+
     if news and news.get("sentiment") not in (None, "N/A"):
         chunks.append(f"News: {news.get('sentiment')} / {news.get('strength')}")
+
     return " | ".join(chunks)
 
 
-def scan_universe(fyers, symbols, include_news=True, include_fundamental=False, progress=None):
+def scan_universe(fyers, symbols, timeframe_mode="15 min + 1 hr", include_news=True, include_fundamental=False, progress=None):
     rows = []
     n = len(symbols)
+
     from services import base_name_from_symbol, send_telegram_msg
 
     for i, sym in enumerate(symbols):
         base = base_name_from_symbol(sym)
-        tech = analyze_technical_bundle(fyers, sym)
+
+        tech = analyze_multi_timeframe(fyers, sym, timeframe_mode)
         oi = analyze_oi(fyers, sym)
-        news = analyze_news(base) if include_news else {"score": None, "sentiment": "N/A", "strength": "N/A", "headline": "disabled", "note": "disabled"}
+        news = analyze_news(base) if include_news else {
+            "score": None,
+            "sentiment": "N/A",
+            "strength": "N/A",
+            "headline": "disabled",
+            "note": "disabled"
+        }
+
         fund = analyze_fundamental_optional(base, enabled=include_fundamental)
         result = analyze_results_optional(base, enabled=include_fundamental)
 
@@ -277,8 +375,13 @@ def scan_universe(fyers, symbols, include_news=True, include_fundamental=False, 
         if tech is None:
             row = {
                 "Symbol": sym,
+                "Timeframe Mode": timeframe_mode,
+                "Primary TF": "",
+                "Confirm TF": "",
+                "MTF Status": "No Data",
                 "LTP": None,
                 "Pattern": "None",
+                "Pattern TF": "",
                 "Pattern Direction": "NEUTRAL",
                 "Pattern Confidence": "LOW",
                 "TrendScore": None,
@@ -299,10 +402,17 @@ def scan_universe(fyers, symbols, include_news=True, include_fundamental=False, 
             continue
 
         pattern = tech.get("pattern", {})
+        confirm = tech.get("confirm")
+
         row = {
             "Symbol": sym,
+            "Timeframe Mode": timeframe_mode,
+            "Primary TF": f"{tech.get('resolution')}m",
+            "Confirm TF": f"{confirm.get('resolution')}m" if confirm else "-",
+            "MTF Status": tech.get("mtf_status"),
             "LTP": tech.get("last"),
             "Pattern": pattern.get("pattern"),
+            "Pattern TF": f"{tech.get('resolution')}m",
             "Pattern Direction": pattern.get("direction"),
             "Pattern Confidence": pattern.get("confidence"),
             "TrendScore": tech.get("trend_score"),
@@ -322,19 +432,37 @@ def scan_universe(fyers, symbols, include_news=True, include_fundamental=False, 
         rows.append(row)
 
         if signal in ("STRONG BUY", "BUY", "STRONG SELL", "SELL"):
-            msg = (
-                f"{'🚀' if 'BUY' in signal else '📉'} {signal}\n"
-                f"Symbol: {sym}\n"
-                f"LTP: {tech.get('last')}\n"
-                f"Score: {score}\n"
-                f"Bullish: {bull}% | Bearish: {bear}%\n"
-                f"Pattern: {pattern.get('pattern')} ({pattern.get('confidence')})\n"
-                f"OI: {oi.get('note')}\n"
-                f"News: {news.get('sentiment')} / {news.get('strength')}\n"
-                f"Headline: {news.get('headline')}\n"
-                f"Reason: {reason}"
-            )
-            send_telegram_msg(msg)
+            if should_send_alert(sym, signal, score):
+                msg = (
+                    f"{'🚀' if 'BUY' in signal else '📉'} {signal}\n"
+                    f"Symbol: {sym}\n"
+                    f"Timeframe Mode: {timeframe_mode}\n"
+                    f"Primary TF: {tech.get('resolution')}m\n"
+                    f"Confirm TF: {confirm.get('resolution')}m\n" if confirm else
+                    f"{'🚀' if 'BUY' in signal else '📉'} {signal}\n"
+                    f"Symbol: {sym}\n"
+                    f"Timeframe Mode: {timeframe_mode}\n"
+                    f"Primary TF: {tech.get('resolution')}m\n"
+                )
+
+                if confirm:
+                    msg += f"MTF Status: {tech.get('mtf_status')}\n"
+                else:
+                    msg += "MTF Status: Primary Only\n"
+
+                msg += (
+                    f"LTP: {tech.get('last')}\n"
+                    f"Score: {score}\n"
+                    f"Bullish: {bull}% | Bearish: {bear}%\n"
+                    f"Pattern: {pattern.get('pattern')}\n"
+                    f"Pattern TF: {tech.get('resolution')}m\n"
+                    f"Pattern Confidence: {pattern.get('confidence')}\n"
+                    f"OI: {oi.get('note')}\n"
+                    f"News: {news.get('sentiment')} / {news.get('strength')}\n"
+                    f"Headline: {news.get('headline')}\n"
+                    f"Reason: {reason}"
+                )
+                send_telegram_msg(msg)
 
         if progress is not None and n > 0:
             progress.progress((i + 1) / n, text=f"Scanned {i+1}/{n}: {sym}")
