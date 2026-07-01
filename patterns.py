@@ -165,6 +165,145 @@ def detect_head_and_shoulders(df: pd.DataFrame):
     return None
 
 
+def detect_inverse_head_and_shoulders(df: pd.DataFrame):
+    if len(df) < 50:
+        return None
+    recent = df.tail(45).reset_index(drop=True)
+    lows = recent["l"]
+    troughs = lows.nsmallest(3).sort_index()
+    if len(troughs) < 3:
+        return None
+    i1, i2, i3 = troughs.index.tolist()
+    p1, p2, p3 = troughs.values.tolist()
+    if i1 < i2 < i3 and p2 < p1 and p2 < p3 and abs(p1 - p3) / max(p1, 1e-9) < 0.05:
+        neckline = recent.loc[i1:i3, "h"].max()
+        last_close = recent["c"].iloc[-1]
+        if last_close > neckline * 1.002:
+            score = 0.85
+            return {"pattern": "Inverse Head and Shoulders", "direction": "BULLISH", "score": score, "confidence": _confidence_from_score(score), "note": "Three-trough reversal with neckline breakout"}
+    return None
+
+
+def detect_rising_wedge(df: pd.DataFrame):
+    if len(df) < 35:
+        return None
+    recent = df.tail(25).reset_index(drop=True)
+    highs_head = recent["h"].head(12).max()
+    highs_tail = recent["h"].tail(12).max()
+    lows_head = recent["l"].head(12).min()
+    lows_tail = recent["l"].tail(12).min()
+    last_close = recent["c"].iloc[-1]
+    # Both bounds rising, but converging (upper rises slower than lower) => rising wedge, bearish
+    if highs_tail > highs_head and lows_tail > lows_head:
+        upper_rise = highs_tail - highs_head
+        lower_rise = lows_tail - lows_head
+        if lower_rise > upper_rise > 0:
+            support = recent["l"].tail(8).min()
+            if last_close < support * 0.998:
+                score = 0.7
+                return {"pattern": "Rising Wedge", "direction": "BEARISH", "score": -score, "confidence": _confidence_from_score(score), "note": "Converging upward channel breaking down"}
+    return None
+
+
+def detect_falling_wedge(df: pd.DataFrame):
+    if len(df) < 35:
+        return None
+    recent = df.tail(25).reset_index(drop=True)
+    highs_head = recent["h"].head(12).max()
+    highs_tail = recent["h"].tail(12).max()
+    lows_head = recent["l"].head(12).min()
+    lows_tail = recent["l"].tail(12).min()
+    last_close = recent["c"].iloc[-1]
+    # Both bounds falling, but converging (lower falls slower than upper) => falling wedge, bullish
+    if highs_tail < highs_head and lows_tail < lows_head:
+        upper_fall = highs_head - highs_tail
+        lower_fall = lows_head - lows_tail
+        if upper_fall > lower_fall > 0:
+            resistance = recent["h"].tail(8).max()
+            if last_close > resistance * 1.002:
+                score = 0.7
+                return {"pattern": "Falling Wedge", "direction": "BULLISH", "score": score, "confidence": _confidence_from_score(score), "note": "Converging downward channel breaking out"}
+    return None
+
+
+def detect_rounding_bottom(df: pd.DataFrame):
+    if len(df) < 45:
+        return None
+    recent = df.tail(40).reset_index(drop=True)
+    n = len(recent)
+    third = n // 3
+    first_seg = recent["c"].iloc[:third]
+    mid_seg = recent["c"].iloc[third: 2 * third]
+    last_seg = recent["c"].iloc[2 * third:]
+    if first_seg.empty or mid_seg.empty or last_seg.empty:
+        return None
+    if first_seg.mean() > mid_seg.mean() and last_seg.mean() > mid_seg.mean():
+        resistance = first_seg.max()
+        last_close = recent["c"].iloc[-1]
+        if last_close > resistance * 1.002 and last_seg.mean() > first_seg.mean() * 0.98:
+            score = 0.75
+            return {"pattern": "Rounding Bottom", "direction": "BULLISH", "score": score, "confidence": _confidence_from_score(score), "note": "Gradual U-shaped base with breakout above resistance"}
+    return None
+
+
+def detect_bullish_engulfing(df: pd.DataFrame):
+    if len(df) < 5:
+        return None
+    prev = df.iloc[-2]
+    last = df.iloc[-1]
+    prev_bearish = prev["c"] < prev["o"]
+    last_bullish = last["c"] > last["o"]
+    if prev_bearish and last_bullish and last["o"] <= prev["c"] and last["c"] >= prev["o"]:
+        score = 0.65
+        return {"pattern": "Bullish Engulfing", "direction": "BULLISH", "score": score, "confidence": _confidence_from_score(score), "note": "Bullish candle fully engulfs prior bearish candle"}
+    return None
+
+
+def detect_bearish_engulfing(df: pd.DataFrame):
+    if len(df) < 5:
+        return None
+    prev = df.iloc[-2]
+    last = df.iloc[-1]
+    prev_bullish = prev["c"] > prev["o"]
+    last_bearish = last["c"] < last["o"]
+    if prev_bullish and last_bearish and last["o"] >= prev["c"] and last["c"] <= prev["o"]:
+        score = 0.65
+        return {"pattern": "Bearish Engulfing", "direction": "BEARISH", "score": -score, "confidence": _confidence_from_score(score), "note": "Bearish candle fully engulfs prior bullish candle"}
+    return None
+
+
+def detect_morning_star(df: pd.DataFrame):
+    if len(df) < 6:
+        return None
+    c1, c2, c3 = df.iloc[-3], df.iloc[-2], df.iloc[-1]
+    body1 = c1["o"] - c1["c"]
+    body2 = abs(c2["c"] - c2["o"])
+    body3 = c3["c"] - c3["o"]
+    c1_bearish = body1 > 0
+    c2_small = body2 < abs(body1) * 0.4 if body1 else False
+    c3_bullish = body3 > 0
+    if c1_bearish and c2_small and c3_bullish and c3["c"] > (c1["o"] + c1["c"]) / 2:
+        score = 0.8
+        return {"pattern": "Morning Star", "direction": "BULLISH", "score": score, "confidence": _confidence_from_score(score), "note": "Three-candle bullish reversal after downtrend"}
+    return None
+
+
+def detect_evening_star(df: pd.DataFrame):
+    if len(df) < 6:
+        return None
+    c1, c2, c3 = df.iloc[-3], df.iloc[-2], df.iloc[-1]
+    body1 = c1["c"] - c1["o"]
+    body2 = abs(c2["c"] - c2["o"])
+    body3 = c3["o"] - c3["c"]
+    c1_bullish = body1 > 0
+    c2_small = body2 < abs(body1) * 0.4 if body1 else False
+    c3_bearish = body3 > 0
+    if c1_bullish and c2_small and c3_bearish and c3["c"] < (c1["o"] + c1["c"]) / 2:
+        score = 0.8
+        return {"pattern": "Evening Star", "direction": "BEARISH", "score": -score, "confidence": _confidence_from_score(score), "note": "Three-candle bearish reversal after uptrend"}
+    return None
+
+
 def detect_patterns(df: pd.DataFrame):
     detectors = [
         detect_cup_handle,
@@ -175,6 +314,14 @@ def detect_patterns(df: pd.DataFrame):
         detect_flag,
         detect_pennant,
         detect_head_and_shoulders,
+        detect_inverse_head_and_shoulders,
+        detect_rising_wedge,
+        detect_falling_wedge,
+        detect_rounding_bottom,
+        detect_bullish_engulfing,
+        detect_bearish_engulfing,
+        detect_morning_star,
+        detect_evening_star,
     ]
     found = []
     for fn in detectors:

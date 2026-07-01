@@ -18,6 +18,7 @@ from config import (
 from services import fetch_history, fetch_quote, fetch_news_for_symbol
 from patterns import detect_patterns
 from storage import should_send_alert
+from fundamentals import analyze_fundamental_and_results
 
 
 def compute_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -252,15 +253,13 @@ def analyze_news(base: str):
 
 
 def analyze_fundamental_optional(base: str, enabled: bool = False):
-    if not enabled:
-        return {"score": None, "note": "disabled"}
-    return {"score": None, "note": "optional placeholder"}
+    fund, _ = analyze_fundamental_and_results(base, enabled=enabled)
+    return fund
 
 
 def analyze_results_optional(base: str, enabled: bool = False):
-    if not enabled:
-        return {"score": None, "note": "disabled"}
-    return {"score": None, "note": "optional placeholder"}
+    _, result = analyze_fundamental_and_results(base, enabled=enabled)
+    return result
 
 
 def combine_scores(tech, oi, news, fund=None, result=None):
@@ -392,6 +391,10 @@ def scan_universe(fyers, symbols, timeframe_mode="15 min + 1 hr", include_news=T
                 "News Sentiment": news.get("sentiment"),
                 "News Strength": news.get("strength"),
                 "Top Headline": news.get("headline"),
+                "P/E": fund.get("pe") if fund else None,
+                "ROE %": fund.get("roe") if fund else None,
+                "Sales QoQ %": result.get("sales_qoq") if result else None,
+                "Profit QoQ %": result.get("profit_qoq") if result else None,
                 "Score": score,
                 "Bullish %": bull,
                 "Bearish %": bear,
@@ -423,6 +426,10 @@ def scan_universe(fyers, symbols, timeframe_mode="15 min + 1 hr", include_news=T
             "News Sentiment": news.get("sentiment"),
             "News Strength": news.get("strength"),
             "Top Headline": news.get("headline"),
+            "P/E": fund.get("pe") if fund else None,
+            "ROE %": fund.get("roe") if fund else None,
+            "Sales QoQ %": result.get("sales_qoq") if result else None,
+            "Profit QoQ %": result.get("profit_qoq") if result else None,
             "Score": score,
             "Bullish %": bull,
             "Bearish %": bear,
@@ -433,19 +440,16 @@ def scan_universe(fyers, symbols, timeframe_mode="15 min + 1 hr", include_news=T
 
         if signal in ("STRONG BUY", "BUY", "STRONG SELL", "SELL"):
             if should_send_alert(sym, signal, score):
+                icon = "🚀" if "BUY" in signal else "📉"
                 msg = (
-                    f"{'🚀' if 'BUY' in signal else '📉'} {signal}\n"
-                    f"Symbol: {sym}\n"
-                    f"Timeframe Mode: {timeframe_mode}\n"
-                    f"Primary TF: {tech.get('resolution')}m\n"
-                    f"Confirm TF: {confirm.get('resolution')}m\n" if confirm else
-                    f"{'🚀' if 'BUY' in signal else '📉'} {signal}\n"
+                    f"{icon} {signal}\n"
                     f"Symbol: {sym}\n"
                     f"Timeframe Mode: {timeframe_mode}\n"
                     f"Primary TF: {tech.get('resolution')}m\n"
                 )
 
                 if confirm:
+                    msg += f"Confirm TF: {confirm.get('resolution')}m\n"
                     msg += f"MTF Status: {tech.get('mtf_status')}\n"
                 else:
                     msg += "MTF Status: Primary Only\n"
