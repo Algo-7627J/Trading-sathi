@@ -375,7 +375,7 @@ else:
             "historical next-day outcomes."
         )
 
-        if st.button("🔮 Run Next-Day Outlook Scan", type="primary", key="run_next_day_scan"):
+        if st.button("🔮 Run Next-Day Outlook Scan", type="primary", key="run_next_day_scan_btn"):
             st.session_state.run_next_day_scan = True
 
         if st.session_state.get("run_next_day_scan"):
