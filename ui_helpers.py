@@ -1,8 +1,22 @@
 import streamlit as st
 import pandas as pd
 
+try:
+    import altair as alt
+except Exception:
+    alt = None
+
 from sectors import add_sector_column, ordered_sectors
 from storage import load_watchlist, add_to_watchlist, remove_from_watchlist
+
+SIGNAL_COLORS = {
+    "STRONG BUY": "#16a34a",
+    "BUY": "#4ade80",
+    "HOLD": "#94a3b8",
+    "SELL": "#f87171",
+    "STRONG SELL": "#dc2626",
+    "NO DATA": "#64748b",
+}
 
 # Lower number = higher priority = shown first.
 SIGNAL_PRIORITY = {
@@ -137,6 +151,70 @@ def display_signal_table(df: pd.DataFrame, prioritize: bool = True):
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
 
+def _short_symbol(sym: str) -> str:
+    """Shorten a FYERS symbol like NSE:RELIANCE-EQ -> RELIANCE for chart labels."""
+    try:
+        s = sym.split(":")[-1]
+        s = s.replace("-EQ", "")
+        return s
+    except Exception:
+        return sym
+
+
+def render_signal_bar_chart(df: pd.DataFrame, title: str = "", height_per_row: int = 28):
+    """
+    Horizontal bar chart of symbols ranked by Score, colored by Signal
+    (green shades for BUY/STRONG BUY, red shades for SELL/STRONG SELL).
+    Falls back to a table if Altair isn't available.
+    """
+    if df is None or df.empty:
+        st.info(f"No {title.lower()} signals in this scan." if title else "No data.")
+        return
+
+    if alt is None or "Score" not in df.columns:
+        display_signal_table(df)
+        return
+
+    chart_df = df.copy()
+    chart_df["Score"] = pd.to_numeric(chart_df["Score"], errors="coerce")
+    chart_df = chart_df.dropna(subset=["Score"])
+    if chart_df.empty:
+        display_signal_table(df)
+        return
+
+    chart_df["_label"] = chart_df["Symbol"].apply(_short_symbol)
+    chart_df = chart_df.sort_values("Score", key=lambda s: s.abs(), ascending=False)
+
+    n = len(chart_df)
+    chart_height = max(120, min(700, n * height_per_row))
+
+    color_scale = alt.Scale(
+        domain=list(SIGNAL_COLORS.keys()),
+        range=list(SIGNAL_COLORS.values()),
+    )
+
+    tooltip_fields = ["Symbol", "Signal", "Score"]
+    for extra in ("Sector", "Pattern", "Sector Info", "Reason"):
+        if extra in chart_df.columns:
+            tooltip_fields.append(extra)
+
+    chart = (
+        alt.Chart(chart_df)
+        .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+        .encode(
+            x=alt.X("Score:Q", title="Score"),
+            y=alt.Y("_label:N", sort="-x", title=None),
+            color=alt.Color("Signal:N", scale=color_scale, legend=alt.Legend(title="Signal")),
+            tooltip=tooltip_fields,
+        )
+        .properties(height=chart_height)
+    )
+
+    if title:
+        st.markdown(f"**{title}**")
+    st.altair_chart(chart, use_container_width=True)
+
+
 def render_watchlist_manager(all_symbols):
     """
     Sidebar-friendly widget to add/remove symbols from a persistent watchlist.
@@ -183,11 +261,24 @@ def render_watchlist_results(df: pd.DataFrame, watchlist: list):
         display_signal_table(wl_df)
 
 
+def _sector_tab_label(sector: str, sector_df: pd.DataFrame) -> str:
+    total = len(sector_df)
+    sb = len(sector_df[sector_df["Signal"] == "STRONG BUY"])
+    ss = len(sector_df[sector_df["Signal"] == "STRONG SELL"])
+    badge = ""
+    if sb:
+        badge += f" 🟢{sb}"
+    if ss:
+        badge += f" 🔴{ss}"
+    return f"{sector} ({total}){badge}"
+
+
 def render_sector_tabs(df: pd.DataFrame):
     """
-    Split scan results into sector-wise tabs. Within each tab, STRONG BUY and
-    STRONG SELL signals are always shown first (highlighted), matching the
-    overall priority ranking used elsewhere in the app.
+    Split scan results into sector-wise tabs. Each tab shows STRONG BUY /
+    STRONG SELL counts right in the tab label, and renders those signals as
+    horizontal bar charts (ranked by score) above the full results table -
+    which itself always shows STRONG BUY/STRONG SELL rows first.
     """
     if df is None or df.empty:
         st.warning("No data to display.")
@@ -201,16 +292,33 @@ def render_sector_tabs(df: pd.DataFrame):
         display_signal_table(df)
         return
 
-    tab_labels = [f"{s} ({len(df[df['Sector'] == s])})" for s in sectors]
+    tab_labels = [_sector_tab_label(s, df[df["Sector"] == s]) for s in sectors]
     tabs = st.tabs(["🌐 All"] + tab_labels)
 
     with tabs[0]:
-        render_summary_cards(df)
-        display_signal_table(df)
+        render_sector_panel(df)
 
     for tab, sector in zip(tabs[1:], sectors):
         with tab:
             sector_df = df[df["Sector"] == sector]
-            render_summary_cards(sector_df)
             st.markdown(f'<span class="sector-chip">{sector}</span>', unsafe_allow_html=True)
-            display_signal_table(sector_df)
+            render_sector_panel(sector_df)
+
+
+def render_sector_panel(sector_df: pd.DataFrame):
+    """Summary cards + Strong Buy/Strong Sell bar charts + full table for one sector (or 'All')."""
+    render_summary_cards(sector_df)
+
+    strong_buy = sector_df[sector_df["Signal"] == "STRONG BUY"]
+    strong_sell = sector_df[sector_df["Signal"] == "STRONG SELL"]
+
+    if not strong_buy.empty or not strong_sell.empty:
+        c1, c2 = st.columns(2)
+        with c1:
+            render_signal_bar_chart(strong_buy, title=f"🟢🟢 STRONG BUY ({len(strong_buy)})")
+        with c2:
+            render_signal_bar_chart(strong_sell, title=f"🔴🔴 STRONG SELL ({len(strong_sell)})")
+        st.markdown("---")
+
+    with st.expander("📋 Full results table", expanded=False):
+        display_signal_table(sector_df)

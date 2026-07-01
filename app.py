@@ -22,6 +22,7 @@ from ui_helpers import (
     render_sector_tabs,
     render_watchlist_manager,
     render_watchlist_results,
+    render_signal_bar_chart,
     sort_by_priority,
 )
 from sectors import add_sector_column
@@ -214,26 +215,25 @@ else:
         st.subheader("Scan Results")
         render_summary_cards(df_sorted)
 
-        st.markdown("### 🗂️ Sector-wise Results (Strong Buy / Strong Sell shown first)")
+        strong_buy = df_sorted[df_sorted["Signal"] == "STRONG BUY"]
+        strong_sell = df_sorted[df_sorted["Signal"] == "STRONG SELL"]
+        buy = df_sorted[df_sorted["Signal"] == "BUY"]
+        sell = df_sorted[df_sorted["Signal"] == "SELL"]
+
+        st.markdown("### 🚨 Overall Strong Signals (all sectors)")
+        sb, ss = st.columns(2)
+        with sb:
+            render_signal_bar_chart(strong_buy, title=f"🟢🟢 STRONG BUY ({len(strong_buy)})")
+        with ss:
+            render_signal_bar_chart(strong_sell, title=f"🔴🔴 STRONG SELL ({len(strong_sell)})")
+
+        st.markdown("### 🗂️ Sector-wise Results (Strong Buy / Strong Sell shown first, as bar charts)")
         render_sector_tabs(df_sorted)
 
         st.markdown("---")
         render_watchlist_results(df_sorted, watchlist)
 
         st.markdown("---")
-        strong_buy = df_sorted[df_sorted["Signal"] == "STRONG BUY"]
-        strong_sell = df_sorted[df_sorted["Signal"] == "STRONG SELL"]
-        buy = df_sorted[df_sorted["Signal"] == "BUY"]
-        sell = df_sorted[df_sorted["Signal"] == "SELL"]
-
-        sb, ss = st.columns(2)
-        with sb:
-            st.subheader(f"🟢🟢 STRONG BUY ({len(strong_buy)})")
-            display_signal_table(strong_buy)
-        with ss:
-            st.subheader(f"🔴🔴 STRONG SELL ({len(strong_sell)})")
-            display_signal_table(strong_sell)
-
         x, y = st.columns(2)
         with x:
             st.subheader(f"🟢 BUY ({len(buy)})")
