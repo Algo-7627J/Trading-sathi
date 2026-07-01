@@ -115,7 +115,7 @@ def sort_by_priority(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["_priority"] = df["Signal"].map(SIGNAL_PRIORITY).fillna(9)
     if "Score" in df.columns:
-        df["_abs_score"] = df["Score"].abs().fillna(-1)
+        df["_abs_score"] = pd.to_numeric(df["Score"], errors="coerce").abs().fillna(-1)
     else:
         df["_abs_score"] = 0
     df = df.sort_values(["_priority", "_abs_score"], ascending=[True, False])
