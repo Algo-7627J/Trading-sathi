@@ -28,55 +28,305 @@ SIGNAL_PRIORITY = {
     "NO DATA": 3,
 }
 
+# A vivid, high-contrast palette used to color-code sector chips
+# consistently (hash of sector name -> color), so each sector is visually
+# distinct across the whole app.
+SECTOR_PALETTE = [
+    "#f97316", "#22c55e", "#38bdf8", "#a78bfa", "#f43f5e",
+    "#eab308", "#2dd4bf", "#fb7185", "#818cf8", "#4ade80",
+    "#fbbf24", "#60a5fa", "#e879f9", "#34d399", "#fca5a5",
+    "#93c5fd", "#c084fc", "#facc15", "#5eead4", "#fda4af",
+    "#a3e635", "#7dd3fc", "#f472b6", "#bef264",
+]
+
+
+def _sector_color(sector: str) -> str:
+    if not sector:
+        return "#64748b"
+    idx = sum(ord(c) for c in str(sector)) % len(SECTOR_PALETTE)
+    return SECTOR_PALETTE[idx]
+
 
 def inject_custom_css():
     st.markdown(
         """
         <style>
-        .main {background-color: #0f172a; color: #e2e8f0;}
-        .block-container {padding-top: 1rem; padding-bottom: 2rem; max-width: 98%;}
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap');
+
+        html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
+
+        /* ---------- App background ---------- */
+        .stApp {
+            background:
+                radial-gradient(circle at 10% 0%, rgba(99,102,241,0.10) 0%, transparent 40%),
+                radial-gradient(circle at 90% 10%, rgba(20,184,166,0.10) 0%, transparent 40%),
+                #0a0e1a;
+            color: #e2e8f0;
+        }
+        .block-container {
+            padding-top: 1.2rem;
+            padding-bottom: 3rem;
+            max-width: 98%;
+        }
+
+        /* ---------- Headings ---------- */
+        h1, h2, h3 { font-family: 'Manrope', 'Inter', sans-serif; letter-spacing: -0.01em; }
+        h2, h3 { color: #f1f5f9 !important; }
+
+        /* ---------- Hero header ---------- */
+        .ts-hero {
+            background: linear-gradient(120deg, #4338ca 0%, #6d28d9 45%, #0891b2 100%);
+            border-radius: 22px;
+            padding: 28px 32px;
+            margin-bottom: 22px;
+            box-shadow: 0 12px 40px rgba(79, 70, 229, 0.35);
+            position: relative;
+            overflow: hidden;
+        }
+        .ts-hero::after {
+            content: "";
+            position: absolute; inset: 0;
+            background: radial-gradient(circle at 85% -10%, rgba(255,255,255,0.20), transparent 55%);
+        }
+        .ts-hero h1 {
+            color: #ffffff !important;
+            font-size: 1.9rem;
+            margin: 0 0 6px 0;
+            font-weight: 800;
+            position: relative;
+        }
+        .ts-hero p {
+            color: rgba(255,255,255,0.88);
+            margin: 0;
+            font-size: 0.95rem;
+            position: relative;
+        }
+        .ts-hero .ts-hero-tags { margin-top: 14px; position: relative; }
+        .ts-hero .ts-tag {
+            display: inline-block;
+            background: rgba(255,255,255,0.16);
+            border: 1px solid rgba(255,255,255,0.28);
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 3px 6px 3px 0;
+            backdrop-filter: blur(6px);
+        }
+
+        /* ---------- Stat cards (custom, replaces plain st.metric look) ---------- */
+        .ts-stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+        .ts-stat-card {
+            flex: 1 1 150px;
+            background: linear-gradient(160deg, #131a2c 0%, #0f1526 100%);
+            border: 1px solid rgba(148,163,184,0.14);
+            border-radius: 16px;
+            padding: 16px 18px;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+        .ts-stat-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(148,163,184,0.32);
+        }
+        .ts-stat-card .ts-stat-bar {
+            position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+        }
+        .ts-stat-card .ts-stat-label {
+            color: #94a3b8; font-size: 12.5px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
+        }
+        .ts-stat-card .ts-stat-value {
+            font-size: 1.7rem; font-weight: 800; color: #f8fafc; font-family: 'Manrope', sans-serif;
+        }
+        .ts-stat-card .ts-stat-icon { font-size: 1.3rem; margin-bottom: 4px; display: block; }
+
+        /* Native st.metric fallback styling (kept for places still using it) */
         div[data-testid="stMetric"] {
-            background: linear-gradient(135deg, #111827, #1f2937);
-            border: 1px solid #334155;
-            padding: 12px;
-            border-radius: 14px;
-        }
-        .ts-card {
-            background: linear-gradient(135deg, #111827, #172033);
-            border: 1px solid #2b3648;
+            background: linear-gradient(160deg, #131a2c 0%, #0f1526 100%);
+            border: 1px solid rgba(148,163,184,0.14);
             padding: 14px 16px;
-            border-radius: 14px;
-            margin-bottom: 10px;
+            border-radius: 16px;
         }
+        div[data-testid="stMetricLabel"] { color: #94a3b8 !important; }
+
+        /* ---------- Section header ---------- */
+        .ts-section-header {
+            display: flex; align-items: center; gap: 10px;
+            margin: 26px 0 14px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid rgba(148,163,184,0.14);
+        }
+        .ts-section-header .ts-section-icon {
+            font-size: 1.3rem;
+            width: 38px; height: 38px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(20,184,166,0.25));
+        }
+        .ts-section-header h3 { margin: 0 !important; font-size: 1.15rem !important; }
+        .ts-section-header .ts-section-sub { color: #94a3b8; font-size: 12.5px; margin-left: auto; }
+
+        /* ---------- Cards / containers ---------- */
+        .ts-card {
+            background: linear-gradient(160deg, #131a2c 0%, #0f1526 100%);
+            border: 1px solid rgba(148,163,184,0.14);
+            padding: 18px 20px;
+            border-radius: 16px;
+            margin-bottom: 14px;
+        }
+        .ts-card-bullish { border-left: 4px solid #22c55e; }
+        .ts-card-bearish { border-left: 4px solid #f43f5e; }
+
+        /* ---------- Badges / pills ---------- */
+        .ts-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 4px 12px; border-radius: 999px;
+            font-size: 12.5px; font-weight: 700; letter-spacing: 0.01em;
+        }
+        .ts-badge-strongbuy { background: rgba(34,197,94,0.20); color: #4ade80; border: 1px solid rgba(74,222,128,0.35); }
+        .ts-badge-buy { background: rgba(34,197,94,0.12); color: #86efac; border: 1px solid rgba(134,239,172,0.25); }
+        .ts-badge-hold { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+        .ts-badge-sell { background: rgba(244,63,94,0.12); color: #fca5a5; border: 1px solid rgba(252,165,165,0.25); }
+        .ts-badge-strongsell { background: rgba(244,63,94,0.20); color: #f87171; border: 1px solid rgba(248,113,113,0.35); }
+        .ts-badge-neutral { background: rgba(148,163,184,0.14); color: #cbd5e1; border: 1px solid rgba(203,213,225,0.25); }
+
+        /* ---------- Sector chip ---------- */
+        .sector-chip {
+            display: inline-block;
+            padding: 5px 14px;
+            border-radius: 999px;
+            font-size: 12.5px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            letter-spacing: 0.01em;
+        }
+
+        /* ---------- Tabs ---------- */
+        div[data-testid="stTabs"] button[data-baseweb="tab"] {
+            font-weight: 700;
+            border-radius: 10px 10px 0 0;
+            padding: 10px 16px;
+            color: #94a3b8;
+        }
+        div[data-testid="stTabs"] button[aria-selected="true"] {
+            color: #a5b4fc !important;
+            background: linear-gradient(180deg, rgba(99,102,241,0.14), transparent);
+            border-bottom: 3px solid #818cf8 !important;
+        }
+        div[data-testid="stTabs"] { border-bottom: 1px solid rgba(148,163,184,0.14); }
+
+        /* ---------- Buttons ---------- */
+        div[data-testid="stButton"] button[kind="primary"] {
+            background: linear-gradient(120deg, #6366f1, #0891b2);
+            border: none;
+            font-weight: 700;
+            box-shadow: 0 6px 18px rgba(99,102,241,0.35);
+            transition: transform 0.12s ease;
+        }
+        div[data-testid="stButton"] button[kind="primary"]:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 22px rgba(99,102,241,0.45);
+        }
+        div[data-testid="stButton"] button[kind="secondary"] {
+            border: 1px solid rgba(148,163,184,0.3);
+            background: rgba(148,163,184,0.06);
+        }
+
+        /* ---------- Sidebar ---------- */
+        section[data-testid="stSidebar"] {
+            background: linear-gradient(180deg, #0d1220 0%, #0a0e1a 100%);
+            border-right: 1px solid rgba(148,163,184,0.12);
+        }
+        section[data-testid="stSidebar"] h1,
+        section[data-testid="stSidebar"] h2,
+        section[data-testid="stSidebar"] h3,
+        section[data-testid="stSidebar"] h4 { color: #e2e8f0 !important; }
+
+        /* ---------- Alerts ---------- */
+        div[data-testid="stAlert"] { border-radius: 14px; }
+
+        /* ---------- Expander ---------- */
+        details {
+            background: rgba(148,163,184,0.04);
+            border: 1px solid rgba(148,163,184,0.12);
+            border-radius: 14px !important;
+        }
+
+        /* ---------- Divider replacement ---------- */
+        .ts-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(148,163,184,0.28), transparent);
+            margin: 22px 0;
+            border: none;
+        }
+
+        /* ---------- Misc ---------- */
         .sig-buy {color:#22c55e;font-weight:700;}
         .sig-sell {color:#ef4444;font-weight:700;}
         .sig-hold {color:#f59e0b;font-weight:700;}
         .sig-neutral {color:#94a3b8;font-weight:700;}
-
-        .sector-chip {
-            display:inline-block;
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border: 1px solid #334155;
-            color: #93c5fd;
-            padding: 3px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
-
-        div[data-testid="stTabs"] button[data-baseweb="tab"] {
-            font-weight: 600;
-        }
-
-        .watch-star {
-            color: #facc15;
-            font-weight: 700;
-        }
+        .watch-star { color: #facc15; font-weight: 700; }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_hero_header(title: str, subtitle: str, tags=None):
+    """Colorful gradient hero banner used at the top of the app."""
+    tags_html = ""
+    if tags:
+        tags_html = '<div class="ts-hero-tags">' + "".join(
+            f'<span class="ts-tag">{t}</span>' for t in tags
+        ) + "</div>"
+    st.markdown(
+        f"""
+        <div class="ts-hero">
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+            {tags_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def section_header(title: str, icon: str = "📊", sub: str = ""):
+    """Consistent, colorful section title used to visually separate parts of the page."""
+    sub_html = f'<span class="ts-section-sub">{sub}</span>' if sub else ""
+    st.markdown(
+        f"""
+        <div class="ts-section-header">
+            <div class="ts-section-icon">{icon}</div>
+            <h3>{title}</h3>
+            {sub_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_stat_cards(items):
+    """
+    Render a row of custom-styled stat cards.
+    items: list of dicts {label, value, icon, color}
+    """
+    cards_html = ""
+    for it in items:
+        color = it.get("color", "#6366f1")
+        icon = it.get("icon", "📌")
+        cards_html += f"""
+        <div class="ts-stat-card">
+            <div class="ts-stat-bar" style="background:{color};"></div>
+            <span class="ts-stat-icon">{icon}</span>
+            <div class="ts-stat-label">{it.get('label','')}</div>
+            <div class="ts-stat-value">{it.get('value','')}</div>
+        </div>
+        """
+    st.markdown(f'<div class="ts-stat-row">{cards_html}</div>', unsafe_allow_html=True)
 
 
 def render_summary_cards(df: pd.DataFrame):
@@ -85,24 +335,40 @@ def render_summary_cards(df: pd.DataFrame):
     sell = len(df[df["Signal"].isin(["SELL", "STRONG SELL"])]) if total else 0
     strong_buy = len(df[df["Signal"] == "STRONG BUY"]) if total else 0
     strong_sell = len(df[df["Signal"] == "STRONG SELL"]) if total else 0
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Scanned", total)
-    c2.metric("Buy", buy)
-    c3.metric("Sell", sell)
-    c4.metric("Strong Buy", strong_buy)
-    c5.metric("Strong Sell", strong_sell)
+    render_stat_cards([
+        {"label": "Scanned", "value": total, "icon": "🔎", "color": "#818cf8"},
+        {"label": "Buy", "value": buy, "icon": "🟢", "color": "#4ade80"},
+        {"label": "Sell", "value": sell, "icon": "🔴", "color": "#f87171"},
+        {"label": "Strong Buy", "value": strong_buy, "icon": "🚀", "color": "#16a34a"},
+        {"label": "Strong Sell", "value": strong_sell, "icon": "📉", "color": "#dc2626"},
+    ])
 
 
-def signal_badge(signal: str):
-    if signal in ["BUY", "STRONG BUY"]:
-        cls = "sig-buy"
-    elif signal in ["SELL", "STRONG SELL"]:
-        cls = "sig-sell"
-    elif signal == "HOLD":
-        cls = "sig-hold"
+def signal_badge(signal: str) -> str:
+    """Return an HTML pill badge for a Signal/Outlook string."""
+    s = str(signal)
+    if s.startswith("STRONG BUY") or s.startswith("STRONG BULLISH"):
+        cls = "ts-badge-strongbuy"
+    elif s.startswith("BUY") or s.startswith("BULLISH"):
+        cls = "ts-badge-buy"
+    elif s.startswith("HOLD") or s.startswith("NEUTRAL"):
+        cls = "ts-badge-hold"
+    elif s.startswith("STRONG SELL") or s.startswith("STRONG BEARISH"):
+        cls = "ts-badge-strongsell"
+    elif s.startswith("SELL") or s.startswith("BEARISH"):
+        cls = "ts-badge-sell"
     else:
-        cls = "sig-neutral"
-    return f'<span class="{cls}">{signal}</span>'
+        cls = "ts-badge-neutral"
+    return f'<span class="ts-badge {cls}">{s}</span>'
+
+
+def render_sector_chip(sector: str):
+    color = _sector_color(sector)
+    st.markdown(
+        f'<span class="sector-chip" style="background:{color}22; color:{color}; '
+        f'border:1px solid {color}55;">🏷️ {sector}</span>',
+        unsafe_allow_html=True,
+    )
 
 
 def sort_by_priority(df: pd.DataFrame) -> pd.DataFrame:
@@ -209,18 +475,24 @@ def render_signal_bar_chart(df: pd.DataFrame, title: str = "", height_per_row: i
 
     chart = (
         alt.Chart(chart_df)
-        .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
         .encode(
             x=alt.X("Score:Q", title="Score"),
             y=alt.Y("_label:N", sort="-x", title=None),
-            color=alt.Color("Signal:N", scale=color_scale, legend=alt.Legend(title="Signal")),
+            color=alt.Color("Signal:N", scale=color_scale, legend=alt.Legend(title="Signal", orient="top")),
             tooltip=tooltip_fields,
         )
         .properties(height=chart_height)
+        .configure_view(strokeWidth=0)
+        .configure_axis(
+            labelColor="#cbd5e1", titleColor="#94a3b8", gridColor="rgba(148,163,184,0.12)",
+            domainColor="rgba(148,163,184,0.25)", labelFontSize=12, titleFontSize=12,
+        )
+        .configure_legend(labelColor="#cbd5e1", titleColor="#e2e8f0")
     )
 
     if title:
-        st.markdown(f"**{title}**")
+        st.markdown(f'<div class="ts-card" style="padding:14px 18px 4px 18px; margin-bottom:8px;"><b>{title}</b></div>', unsafe_allow_html=True)
     st.altair_chart(chart, use_container_width=True)
 
 
@@ -228,31 +500,49 @@ def render_watchlist_manager(all_symbols):
     """
     Sidebar-friendly widget to add/remove symbols from a persistent watchlist.
     """
-    st.markdown("#### ⭐ Watchlist")
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
+        '<span style="font-size:1.1rem;">⭐</span>'
+        '<span style="font-weight:700;color:#f1f5f9;">Watchlist</span>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
     current = load_watchlist()
 
     add_choice = st.selectbox(
-        "Add symbol to watchlist",
+        "Add symbol",
         [""] + sorted(set(all_symbols) - set(current)),
         key="watchlist_add_select",
+        label_visibility="collapsed",
+        placeholder="Add symbol to watchlist...",
     )
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Add", key="watchlist_add_btn") and add_choice:
+        if st.button("➕ Add", key="watchlist_add_btn", use_container_width=True) and add_choice:
             add_to_watchlist(add_choice)
             st.rerun()
     with c2:
         if current:
-            remove_choice = st.selectbox("Remove", [""] + current, key="watchlist_remove_select")
+            remove_choice = st.selectbox("Remove", [""] + current, key="watchlist_remove_select", label_visibility="collapsed")
         else:
             remove_choice = None
 
-    if current and st.button("Remove selected", key="watchlist_remove_btn") and remove_choice:
+    if current and st.button("🗑️ Remove selected", key="watchlist_remove_btn", use_container_width=True) and remove_choice:
         remove_from_watchlist(remove_choice)
         st.rerun()
 
     if current:
-        st.caption(f"Watching {len(current)} symbol(s): " + ", ".join(current))
+        chips = "".join(
+            f'<span style="display:inline-block;background:rgba(129,140,248,0.14);color:#a5b4fc;'
+            f'border:1px solid rgba(129,140,248,0.3);padding:3px 10px;border-radius:999px;'
+            f'font-size:11.5px;font-weight:600;margin:3px 4px 0 0;">{_short_symbol(s)}</span>'
+            for s in current
+        )
+        st.markdown(
+            f'<div style="margin-top:8px;">{chips}</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(f"Watching {len(current)} symbol(s)")
     else:
         st.caption("Watchlist is empty. Add symbols above to track them across scans.")
 
@@ -262,7 +552,7 @@ def render_watchlist_manager(all_symbols):
 def render_watchlist_results(df: pd.DataFrame, watchlist: list):
     if not watchlist:
         return
-    st.subheader(f"⭐ Watchlist Results ({len(watchlist)})")
+    section_header("Watchlist Results", icon="⭐", sub=f"{len(watchlist)} symbol(s) tracked")
     wl_df = df[df["Symbol"].isin(watchlist)]
     if wl_df.empty:
         st.info("None of your watchlist symbols were included in this scan.")
@@ -310,7 +600,7 @@ def render_sector_tabs(df: pd.DataFrame):
     for tab, sector in zip(tabs[1:], sectors):
         with tab:
             sector_df = df[df["Sector"] == sector]
-            st.markdown(f'<span class="sector-chip">{sector}</span>', unsafe_allow_html=True)
+            render_sector_chip(sector)
             render_sector_panel(sector_df)
 
 
@@ -393,21 +683,27 @@ def render_next_day_bar_chart(df: pd.DataFrame, title: str = "", height_per_row:
 
     chart = (
         alt.Chart(chart_df)
-        .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
         .encode(
             x=alt.X("Score:Q", title="Next-Day Score"),
             y=alt.Y("_label:N", sort="-x", title=None),
-            color=alt.Color("_color_group:N", scale=color_scale, legend=alt.Legend(title="Outlook")),
+            color=alt.Color("_color_group:N", scale=color_scale, legend=alt.Legend(title="Outlook", orient="top")),
             opacity=alt.Opacity("_opacity:Q", legend=None, scale=alt.Scale(domain=[0.4, 1.0], range=[0.4, 1.0])),
             tooltip=tooltip_fields,
         )
         .properties(height=chart_height)
+        .configure_view(strokeWidth=0)
+        .configure_axis(
+            labelColor="#cbd5e1", titleColor="#94a3b8", gridColor="rgba(148,163,184,0.12)",
+            domainColor="rgba(148,163,184,0.25)", labelFontSize=12, titleFontSize=12,
+        )
+        .configure_legend(labelColor="#cbd5e1", titleColor="#e2e8f0")
     )
 
     if title:
-        st.markdown(f"**{title}**")
+        st.markdown(f'<div class="ts-card" style="padding:14px 18px 4px 18px; margin-bottom:8px;"><b>{title}</b></div>', unsafe_allow_html=True)
     st.altair_chart(chart, use_container_width=True)
-    st.caption("Faded bars = LOW confidence (backtest sample too small or hit-rate too weak to trust).")
+    st.caption("💡 Faded bars = LOW confidence (backtest sample too small or hit-rate too weak to trust).")
 
 
 def _next_day_summary_cards(df: pd.DataFrame):
@@ -417,12 +713,13 @@ def _next_day_summary_cards(df: pd.DataFrame):
     bullish = len(df[df["Outlook"].astype(str).str.startswith("BULLISH")]) if total else 0
     high_conf = len(df[df["Confidence"] == "HIGH"]) if total else 0
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Analyzed", total)
-    c2.metric("Strong Bullish", strong_bull)
-    c3.metric("Strong Bearish", strong_bear)
-    c4.metric("Bullish (any)", bullish)
-    c5.metric("High Confidence", high_conf)
+    render_stat_cards([
+        {"label": "Analyzed", "value": total, "icon": "🔎", "color": "#818cf8"},
+        {"label": "Strong Bullish", "value": strong_bull, "icon": "🚀", "color": "#16a34a"},
+        {"label": "Strong Bearish", "value": strong_bear, "icon": "📉", "color": "#dc2626"},
+        {"label": "Bullish (any)", "value": bullish, "icon": "🟢", "color": "#4ade80"},
+        {"label": "High Confidence", "value": high_conf, "icon": "⭐", "color": "#facc15"},
+    ])
 
 
 def _next_day_sorted_table(df: pd.DataFrame) -> pd.DataFrame:
@@ -506,5 +803,5 @@ def render_next_day_results(df: pd.DataFrame):
     for tab, sector in zip(tabs[1:], sectors):
         with tab:
             sector_df = df[df["Sector"] == sector]
-            st.markdown(f'<span class="sector-chip">{sector}</span>', unsafe_allow_html=True)
+            render_sector_chip(sector)
             render_next_day_panel(sector_df)
