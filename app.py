@@ -391,6 +391,7 @@ else:
         nd_df = st.session_state.get("next_day_df")
 
         if nd_df is not None and not nd_df.empty:
+            nd_df = add_sector_column(nd_df)
             render_next_day_results(nd_df)
 
             st.download_button(
