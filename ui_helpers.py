@@ -537,6 +537,176 @@ def render_next_day_panel(df: pd.DataFrame):
         st.dataframe(_next_day_sorted_table(df), use_container_width=True, hide_index=True)
 
 
+# ---------------------------------------------------------------------------
+# Common Direction - cross-reference intraday scan vs next-day outlook
+# ---------------------------------------------------------------------------
+
+def _intraday_direction(signal: str) -> str:
+    s = str(signal)
+    if s in ("STRONG BUY", "BUY"):
+        return "UP"
+    if s in ("STRONG SELL", "SELL"):
+        return "DOWN"
+    return "NEUTRAL"
+
+
+def _next_day_direction(outlook: str) -> str:
+    s = str(outlook)
+    # Strip confidence-softened suffix e.g. "BULLISH (Low Confidence)"
+    base = s.split(" (")[0]
+    if base in ("STRONG BULLISH", "BULLISH"):
+        return "UP"
+    if base in ("STRONG BEARISH", "BEARISH"):
+        return "DOWN"
+    return "NEUTRAL"
+
+
+def build_common_direction(intraday_df: pd.DataFrame, next_day_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge the intraday scan and next-day outlook on Symbol, keeping only
+    rows where both point in the SAME direction (both UP or both DOWN).
+    Returns an empty DataFrame if either input is missing/empty.
+    """
+    if intraday_df is None or intraday_df.empty or next_day_df is None or next_day_df.empty:
+        return pd.DataFrame()
+
+    left = intraday_df.copy()
+    right = next_day_df.copy()
+
+    left["_dir_intraday"] = left["Signal"].apply(_intraday_direction)
+    right["_dir_nextday"] = right["Outlook"].apply(_next_day_direction)
+
+    left_cols = ["Symbol", "Signal", "Score", "_dir_intraday"]
+    if "Sector" in left.columns:
+        left_cols.append("Sector")
+    right_cols = ["Symbol", "Outlook", "Score", "Confidence", "_dir_nextday"]
+    if "Backtest Hit Rate %" in right.columns:
+        right_cols.append("Backtest Hit Rate %")
+    if "Backtest Sample" in right.columns:
+        right_cols.append("Backtest Sample")
+
+    merged = pd.merge(
+        left[left_cols], right[right_cols],
+        on="Symbol", how="inner", suffixes=(" (Intraday)", " (Next-Day)")
+    )
+
+    merged = merged[
+        (merged["_dir_intraday"] == merged["_dir_nextday"]) & (merged["_dir_intraday"] != "NEUTRAL")
+    ].copy()
+
+    if merged.empty:
+        return merged
+
+    merged["Direction"] = merged["_dir_intraday"].map({"UP": "BULLISH", "DOWN": "BEARISH"})
+    merged["Combined Strength"] = (
+        pd.to_numeric(merged["Score (Intraday)"], errors="coerce").abs().fillna(0)
+        + pd.to_numeric(merged["Score (Next-Day)"], errors="coerce").abs().fillna(0)
+    )
+    merged = merged.sort_values("Combined Strength", ascending=False)
+    merged = merged.drop(columns=["_dir_intraday", "_dir_nextday"])
+
+    ordered_cols = ["Symbol"]
+    if "Sector" in merged.columns:
+        ordered_cols.append("Sector")
+    ordered_cols += [
+        "Direction", "Signal", "Score (Intraday)", "Outlook", "Score (Next-Day)",
+        "Confidence", "Combined Strength",
+    ]
+    if "Backtest Hit Rate %" in merged.columns:
+        ordered_cols.append("Backtest Hit Rate %")
+    if "Backtest Sample" in merged.columns:
+        ordered_cols.append("Backtest Sample")
+    ordered_cols = [c for c in ordered_cols if c in merged.columns]
+    return merged[ordered_cols]
+
+
+def render_common_direction_bar_chart(df: pd.DataFrame, title: str = ""):
+    """Bar chart of combined-direction stocks ranked by Combined Strength."""
+    if df is None or df.empty:
+        st.caption(f"No {title.lower()} in this scan." if title else "No data.")
+        return
+    if alt is None:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        return
+
+    chart_df = df.copy()
+    if "Sector" in chart_df.columns:
+        chart_df["_label"] = chart_df.apply(
+            lambda r: f"{_short_symbol(r['Symbol'])} · {r['Sector']}" if pd.notna(r.get("Sector")) else _short_symbol(r["Symbol"]),
+            axis=1,
+        )
+    else:
+        chart_df["_label"] = chart_df["Symbol"].apply(_short_symbol)
+
+    color_scale = alt.Scale(domain=["BULLISH", "BEARISH"], range=[GREEN, RED])
+    n = len(chart_df)
+    chart_height = max(100, min(560, n * 26))
+
+    tooltip_fields = ["Symbol", "Direction", "Signal", "Score (Intraday)", "Outlook", "Score (Next-Day)", "Confidence"]
+    tooltip_fields = [f for f in tooltip_fields if f in chart_df.columns]
+
+    chart = (
+        alt.Chart(chart_df)
+        .mark_bar(size=14)
+        .encode(
+            x=alt.X("Combined Strength:Q", title="Combined Strength"),
+            y=alt.Y("_label:N", sort="-x", title=None),
+            color=alt.Color("Direction:N", scale=color_scale, legend=None),
+            tooltip=tooltip_fields,
+        )
+        .properties(height=chart_height)
+    )
+    chart = _dark_chart(chart)
+
+    if title:
+        st.markdown(f'<div style="font-size:13px;font-weight:600;color:{TEXT_MUTED};margin-bottom:4px;">{title}</div>', unsafe_allow_html=True)
+    st.altair_chart(chart, use_container_width=True)
+
+
+def render_common_direction_results(intraday_df: pd.DataFrame, next_day_df: pd.DataFrame):
+    """
+    Cross-references the intraday scan and next-day outlook, surfacing only
+    stocks where both agree on direction (both bullish or both bearish).
+    """
+    if intraday_df is None or intraday_df.empty:
+        st.info("Run the Intraday / 2-Day Scanner first to enable this comparison.")
+        return
+    if next_day_df is None or next_day_df.empty:
+        st.info("Run the Next-Day Outlook scan first to enable this comparison.")
+        return
+
+    common = build_common_direction(intraday_df, next_day_df)
+
+    if common.empty:
+        st.caption("No symbols currently agree in direction between the two scans.")
+        return
+
+    bullish = common[common["Direction"] == "BULLISH"]
+    bearish = common[common["Direction"] == "BEARISH"]
+
+    render_stat_row([
+        {"label": "Symbols compared", "value": len(set(intraday_df["Symbol"]) & set(next_day_df["Symbol"]))},
+        {"label": "Agreeing", "value": len(common)},
+        {"label": "Bullish agreement", "value": len(bullish), "color": GREEN},
+        {"label": "Bearish agreement", "value": len(bearish), "color": RED},
+    ])
+
+    st.caption(
+        "Shows stocks where the Intraday/2-Day Scanner signal (BUY/SELL) and the "
+        "Next-Day Outlook (BULLISH/BEARISH) point in the same direction - "
+        "higher-conviction ideas backed by two independent methods."
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        render_common_direction_bar_chart(bullish, title=f"Bullish agreement ({len(bullish)})")
+    with c2:
+        render_common_direction_bar_chart(bearish, title=f"Bearish agreement ({len(bearish)})")
+
+    with st.expander(f"Full list ({len(common)})", expanded=bullish.empty and bearish.empty):
+        st.dataframe(common, use_container_width=True, hide_index=True)
+
+
 def render_next_day_results(df: pd.DataFrame):
     """
     Single tab bar: All / Bullish / Bearish / [sectors...] for Next-Day

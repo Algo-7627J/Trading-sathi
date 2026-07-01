@@ -25,6 +25,7 @@ from ui_helpers import (
     render_sector_tabs,
     render_watchlist_manager,
     render_next_day_results,
+    render_common_direction_results,
     sort_by_priority,
 )
 from sectors import add_sector_column
@@ -141,7 +142,9 @@ else:
 
     watchlist = load_watchlist()
 
-    tab_intraday, tab_next_day = st.tabs(["Intraday / 2-Day Scanner", "Next-Day Outlook"])
+    tab_intraday, tab_next_day, tab_common = st.tabs(
+        ["Intraday / 2-Day Scanner", "Next-Day Outlook", "Common Direction"]
+    )
 
     # =====================================================================
     # TAB 1: Intraday / 2-day scanner
@@ -381,3 +384,22 @@ tomorrow's news, results or block deals. Treat this as decision support, not a g
 always apply your own risk management.
                 """
             )
+
+    # =====================================================================
+    # TAB 3: Common Direction - cross-reference intraday scan vs next-day outlook
+    # =====================================================================
+    with tab_common:
+        st.markdown(
+            '<div class="ts-card ts-card-notice">'
+            "Shows stocks where the Intraday/2-Day Scanner and the Next-Day Outlook "
+            "independently agree on direction — run both scans (in the other two tabs) "
+            "with overlapping symbol lists first, then check back here."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        section_label("Agreement")
+        render_common_direction_results(
+            st.session_state.get("last_scan_df"),
+            st.session_state.get("next_day_df"),
+        )
