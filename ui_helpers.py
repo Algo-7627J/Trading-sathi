@@ -322,3 +322,131 @@ def render_sector_panel(sector_df: pd.DataFrame):
 
     with st.expander("📋 Full results table", expanded=False):
         display_signal_table(sector_df)
+
+
+# ---------------------------------------------------------------------------
+# Next-Day Outlook rendering
+# ---------------------------------------------------------------------------
+
+NEXT_DAY_COLORS = {
+    "STRONG BULLISH": "#16a34a",
+    "BULLISH": "#4ade80",
+    "NEUTRAL": "#94a3b8",
+    "BEARISH": "#f87171",
+    "STRONG BEARISH": "#dc2626",
+    "NO DATA": "#64748b",
+}
+
+
+def _next_day_color_group(outlook: str) -> str:
+    """Map a possibly-suffixed label (e.g. 'BULLISH (Low Confidence)') to a base color key."""
+    for key in NEXT_DAY_COLORS:
+        if outlook.startswith(key):
+            return key
+    return "NEUTRAL"
+
+
+def render_next_day_bar_chart(df: pd.DataFrame, title: str = "", height_per_row: int = 30):
+    """
+    Horizontal bar chart for Next-Day Outlook results, ranked by |Score|,
+    colored by outlook direction/strength. Low-confidence calls are shown
+    with reduced opacity so high-confidence calls stand out visually.
+    """
+    if df is None or df.empty:
+        st.info(f"No {title.lower()} outlook in this scan." if title else "No data.")
+        return
+
+    if alt is None or "Score" not in df.columns:
+        display_signal_table(df, prioritize=False)
+        return
+
+    chart_df = df.copy()
+    chart_df["Score"] = pd.to_numeric(chart_df["Score"], errors="coerce")
+    chart_df = chart_df.dropna(subset=["Score"])
+    if chart_df.empty:
+        st.info("No scoreable data.")
+        return
+
+    chart_df["_label"] = chart_df["Symbol"].apply(_short_symbol)
+    chart_df["_color_group"] = chart_df["Outlook"].astype(str).apply(_next_day_color_group)
+    chart_df["_opacity"] = chart_df["Confidence"].map({"HIGH": 1.0, "MEDIUM": 0.75, "LOW": 0.4}).fillna(0.5)
+    chart_df = chart_df.sort_values("Score", key=lambda s: s.abs(), ascending=False)
+
+    n = len(chart_df)
+    chart_height = max(120, min(700, n * height_per_row))
+
+    color_scale = alt.Scale(domain=list(NEXT_DAY_COLORS.keys()), range=list(NEXT_DAY_COLORS.values()))
+
+    tooltip_fields = ["Symbol", "Outlook", "Score", "Confidence"]
+    for extra in ("Backtest Sample", "Backtest Hit Rate %", "ADX", "RSI", "RS vs Nifty (5D)", "Sector"):
+        if extra in chart_df.columns:
+            tooltip_fields.append(extra)
+
+    chart = (
+        alt.Chart(chart_df)
+        .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+        .encode(
+            x=alt.X("Score:Q", title="Next-Day Score"),
+            y=alt.Y("_label:N", sort="-x", title=None),
+            color=alt.Color("_color_group:N", scale=color_scale, legend=alt.Legend(title="Outlook")),
+            opacity=alt.Opacity("_opacity:Q", legend=None, scale=alt.Scale(domain=[0.4, 1.0], range=[0.4, 1.0])),
+            tooltip=tooltip_fields,
+        )
+        .properties(height=chart_height)
+    )
+
+    if title:
+        st.markdown(f"**{title}**")
+    st.altair_chart(chart, use_container_width=True)
+    st.caption("Faded bars = LOW confidence (backtest sample too small or hit-rate too weak to trust).")
+
+
+def render_next_day_results(df: pd.DataFrame):
+    """
+    Full Next-Day Outlook results panel: summary metrics, Strong Bullish /
+    Strong Bearish bar charts (high-visibility), then a detailed table with
+    backtest hit-rate and confidence for every symbol.
+    """
+    if df is None or df.empty:
+        st.warning("No data to display.")
+        return
+
+    total = len(df)
+    strong_bull = df[df["Outlook"] == "STRONG BULLISH"]
+    strong_bear = df[df["Outlook"] == "STRONG BEARISH"]
+    bullish = df[df["Outlook"].astype(str).str.startswith("BULLISH")]
+    bearish = df[df["Outlook"].astype(str).str.startswith("BEARISH")]
+    high_conf = df[df["Confidence"] == "HIGH"]
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Analyzed", total)
+    c2.metric("Strong Bullish", len(strong_bull))
+    c3.metric("Strong Bearish", len(strong_bear))
+    c4.metric("Bullish (any)", len(bullish))
+    c5.metric("High Confidence", len(high_conf))
+
+    st.markdown("### 🚨 Strong Calls (backtested)")
+    b1, b2 = st.columns(2)
+    with b1:
+        render_next_day_bar_chart(strong_bull, title=f"🟢🟢 STRONG BULLISH ({len(strong_bull)})")
+    with b2:
+        render_next_day_bar_chart(strong_bear, title=f"🔴🔴 STRONG BEARISH ({len(strong_bear)})")
+
+    st.markdown("---")
+    st.markdown("### 📋 Full Next-Day Outlook Table")
+    st.caption(
+        "Backtest Hit Rate % = how often this exact rule-set's directional call was "
+        "correct historically for THIS stock (over the sample size shown). "
+        "Confidence is only HIGH/MEDIUM when the sample size and hit-rate both clear "
+        "a minimum bar - otherwise it's marked LOW and the call is softened."
+    )
+    if "Confidence" in df.columns:
+        show_df = df.copy()
+        show_df["_conf_rank"] = show_df["Confidence"].map({"HIGH": 0, "MEDIUM": 1, "LOW": 2}).fillna(3)
+        show_df["_abs_score"] = pd.to_numeric(show_df.get("Score"), errors="coerce").abs().fillna(-1)
+        show_df = show_df.sort_values(
+            ["_conf_rank", "_abs_score"], ascending=[True, False]
+        ).drop(columns=["_conf_rank", "_abs_score"])
+    else:
+        show_df = df
+    st.dataframe(show_df, use_container_width=True, hide_index=True)

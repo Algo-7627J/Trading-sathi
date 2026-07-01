@@ -76,3 +76,31 @@ NEWS_NEGATIVE_KEYWORDS = [
     "penalty", "probe", "lawsuit", "decline", "loss", "default", "fraud",
     "guidance cut", "bearish", "underperform", "fall", "drops"
 ]
+
+# ---------------------------------------------------------------------------
+# Next-Day Outlook (daily-candle based prediction + historical backtest)
+# ---------------------------------------------------------------------------
+NIFTY_INDEX_SYMBOL = "NSE:NIFTY50-INDEX"
+NEXT_DAY_LOOKBACK_DAYS = 365
+
+NEXT_DAY_WEIGHTS = {
+    "trend": 20,
+    "adx_di": 20,
+    "momentum": 15,
+    "bollinger": 10,
+    "relative_strength": 15,
+    "support_resistance": 12,
+    "gap": 4,
+    "volume": 4,
+}
+
+NEXT_DAY_STRONG_BULLISH = 45
+NEXT_DAY_BULLISH = 15
+NEXT_DAY_BEARISH = -15
+NEXT_DAY_STRONG_BEARISH = -45
+
+NEXT_DAY_MIN_SAMPLE_HIGH_CONF = 15
+NEXT_DAY_MIN_SAMPLE_MED_CONF = 7
+NEXT_DAY_MIN_HIT_RATE_HIGH_CONF = 65.0
+NEXT_DAY_MIN_HIT_RATE_MED_CONF = 55.0
+
