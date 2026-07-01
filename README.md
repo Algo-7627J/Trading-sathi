@@ -14,7 +14,8 @@ Trading Sathi ek Streamlit-based smart scanner hai jo intraday aur max 2-day hol
 - OI analysis
 - News sentiment analysis
 - Real fundamentals & quarterly results (via Screener.in, best-effort)
-- Sector-wise results view with tabs, Strong Buy/Strong Sell always shown first
+- Sector-wise results view with tabs, Strong Buy/Strong Sell always shown first, as bar charts
+- **Next-Day Outlook**: daily-candle based, backtested next-day direction calls
 - Persistent watchlist (add/remove symbols, dedicated results section)
 - Live auto-refresh scanning
 - Telegram alerts
@@ -57,6 +58,31 @@ When "Include Fundamentals/Results" is enabled, the scanner fetches P/E, ROE,
 ROCE and the latest quarter's Sales/Net Profit QoQ growth from Screener.in
 (no API key required, unofficial best-effort scrape - may be slower or
 occasionally unavailable if Screener changes its layout or rate-limits).
+
+## Next-Day Outlook (Backtested)
+
+A second tab, "🔮 Next-Day Outlook", predicts likely next-day direction using
+**daily** candles (not intraday). Unlike the main scanner's abstract score,
+every call here comes with a **backtested historical hit-rate**:
+
+1. ~1 year of daily candles are fetched per symbol.
+2. 8 factors are computed: Trend (EMA alignment), ADX/+DI/-DI trend
+   strength, RSI/MACD momentum, Bollinger Band position, Relative Strength
+   vs Nifty 50 (5-day), Support/Resistance proximity, Gap behaviour, and
+   Volume confirmation.
+3. The exact same rule-set is replayed on every historical day in that
+   stock's own past year, comparing the predicted direction against the
+   ACTUAL next-day return - producing a real "Backtest Hit Rate %" and
+   sample size, separately for bullish and bearish calls, per stock.
+4. A call is only shown as high-confidence **STRONG BULLISH/BEARISH** if the
+   backtested sample size and hit-rate both clear a minimum bar (15+
+   occurrences and 65%+ hit-rate for HIGH, 7+ and 55%+ for MEDIUM).
+   Otherwise the call is downgraded and labeled "(Low Confidence)".
+
+**Important**: no model can reliably predict tomorrow's exact move - this is
+a decision-support tool, not a guarantee. Past hit-rate doesn't guarantee
+future accuracy, and it can't see tomorrow's news, results, or block deals.
+Always apply your own risk management.
 
 ## Watchlist
 
