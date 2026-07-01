@@ -6,20 +6,34 @@ try:
 except Exception:
     fyersModel = None
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
+
 from config import APP_ID, SECRET_KEY, REDIRECT_URL, TIMEFRAME_OPTIONS
 from services import build_universe
 from analysis import scan_universe
-from storage import ensure_data_files, save_latest_scan, append_signal_history
-from ui_helpers import inject_custom_css, render_summary_cards, display_signal_table
+from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
+from ui_helpers import (
+    inject_custom_css,
+    render_summary_cards,
+    display_signal_table,
+    render_sector_tabs,
+    render_watchlist_manager,
+    render_watchlist_results,
+    sort_by_priority,
+)
+from sectors import add_sector_column
 
-st.set_page_config(page_title="Trading Sathi", layout="wide")
+st.set_page_config(page_title="Trading Sathi", layout="wide", page_icon="🤖")
 inject_custom_css()
 ensure_data_files()
 
 st.title("🤖 Trading Sathi - Intraday + 2 Day Smart Scanner")
-st.caption("Technical + Momentum + Volume + Multi-candle Patterns + OI + News + Multi-Timeframe Confirmation")
+st.caption("Technical + Momentum + Volume + Multi-candle Patterns + OI + News + Fundamentals + Sector View + Multi-Timeframe Confirmation")
 
-for k, v in [("fyers", None), ("access_token", None), ("run_scan", False)]:
+for k, v in [("fyers", None), ("access_token", None), ("run_scan", False), ("last_scan_df", None)]:
     if k not in st.session_state:
         st.session_state[k] = v
 
@@ -73,8 +87,32 @@ if st.session_state.fyers is None:
 else:
     st.success("✅ Connected to FYERS")
 
-    with st.spinner("Loading symbol universe from NSE & FYERS..."):
-        uni = build_universe()
+    with st.sidebar:
+        st.header("⚙️ Settings")
+
+        with st.spinner("Loading symbol universe from NSE & FYERS..."):
+            uni = build_universe()
+
+        render_watchlist_manager(uni["all"])
+
+        st.markdown("---")
+        st.markdown("#### 🔄 Live Auto-Refresh")
+        auto_refresh_on = st.checkbox("Enable auto-refresh scan", value=False)
+        refresh_interval = st.number_input(
+            "Refresh every (seconds)", min_value=30, max_value=1800, value=180, step=30,
+            disabled=not auto_refresh_on,
+        )
+        if auto_refresh_on:
+            if st_autorefresh is not None:
+                st_autorefresh(interval=int(refresh_interval * 1000), key="ts_autorefresh")
+                st.caption(f"Auto-refreshing every {refresh_interval}s")
+            else:
+                st.warning("Install `streamlit-autorefresh` to enable this (see requirements.txt).")
+
+        if st.button("Logout"):
+            for k in ("fyers", "access_token", "run_scan"):
+                st.session_state[k] = None if k != "run_scan" else False
+            st.rerun()
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("F&O Stocks", len(uni["stocks"]))
@@ -93,6 +131,7 @@ else:
                 "Only F&O Stocks",
                 "Only Index Futures",
                 "Only Commodities",
+                "Only Watchlist",
             ],
         )
 
@@ -107,10 +146,12 @@ else:
         include_news = st.checkbox("Include News", value=True)
 
     with c4:
-        include_fund = st.checkbox("Include Fundamental/Results", value=False)
+        include_fund = st.checkbox("Include Fundamentals/Results", value=False)
 
     with c5:
         limit = st.number_input("Max symbols (0 = all)", min_value=0, value=25, step=5)
+
+    watchlist = load_watchlist()
 
     if scope == "Only F&O Stocks":
         chosen = uni["stocks"]
@@ -118,11 +159,13 @@ else:
         chosen = uni["indices"]
     elif scope == "Only Commodities":
         chosen = uni["commodities"]
+    elif scope == "Only Watchlist":
+        chosen = watchlist
     else:
         chosen = uni["all"]
 
     st.subheader("Editable Symbol List")
-    txt = st.text_area("One symbol per line", value="\n".join(chosen), height=260)
+    txt = st.text_area("One symbol per line", value="\n".join(chosen), height=220)
     symbols = [s.strip() for s in txt.split("\n") if s.strip()]
     if limit and limit > 0:
         symbols = symbols[:limit]
@@ -130,15 +173,18 @@ else:
     st.write(f"Symbols queued for scan: **{len(symbols)}**")
     st.info(f"Selected Timeframe Mode: **{timeframe_mode}**")
 
+    if include_fund:
+        st.caption("ℹ️ Fundamentals/Results are scraped best-effort from Screener.in and may be slower or occasionally unavailable.")
+
     a, b = st.columns(2)
     with a:
         if st.button("🔍 Run Smart Scan", type="primary"):
             st.session_state.run_scan = True
     with b:
-        if st.button("Logout"):
-            for k in ("fyers", "access_token", "run_scan"):
-                st.session_state[k] = None if k != "run_scan" else False
-            st.rerun()
+        st.caption("Tip: enable auto-refresh in the sidebar for continuous live scanning.")
+
+    if auto_refresh_on:
+        st.session_state.run_scan = True
 
     if st.session_state.run_scan:
         st.session_state.run_scan = False
@@ -158,33 +204,52 @@ else:
 
             save_latest_scan(df)
             append_signal_history(df)
+            st.session_state.last_scan_df = df
 
-            st.subheader("Scan Results")
-            if not df.empty:
-                df_sorted = df.sort_values("Score", ascending=False, na_position="last")
-                render_summary_cards(df_sorted)
-                display_signal_table(df_sorted)
+    df = st.session_state.last_scan_df
 
-                buy = df_sorted[df_sorted["Signal"].isin(["STRONG BUY", "BUY"])]
-                sell = df_sorted[df_sorted["Signal"].isin(["STRONG SELL", "SELL"])]
+    if df is not None and not df.empty:
+        df_sorted = add_sector_column(df)
 
-                x, y = st.columns(2)
-                with x:
-                    st.subheader(f"🟢 BUY ({len(buy)})")
-                    display_signal_table(buy)
+        st.subheader("Scan Results")
+        render_summary_cards(df_sorted)
 
-                with y:
-                    st.subheader(f"🔴 SELL ({len(sell)})")
-                    display_signal_table(sell)
+        st.markdown("### 🗂️ Sector-wise Results (Strong Buy / Strong Sell shown first)")
+        render_sector_tabs(df_sorted)
 
-                st.download_button(
-                    "Download results CSV",
-                    df_sorted.to_csv(index=False).encode(),
-                    "scan_results.csv",
-                    "text/csv",
-                )
-            else:
-                st.warning("No results returned.")
+        st.markdown("---")
+        render_watchlist_results(df_sorted, watchlist)
+
+        st.markdown("---")
+        strong_buy = df_sorted[df_sorted["Signal"] == "STRONG BUY"]
+        strong_sell = df_sorted[df_sorted["Signal"] == "STRONG SELL"]
+        buy = df_sorted[df_sorted["Signal"] == "BUY"]
+        sell = df_sorted[df_sorted["Signal"] == "SELL"]
+
+        sb, ss = st.columns(2)
+        with sb:
+            st.subheader(f"🟢🟢 STRONG BUY ({len(strong_buy)})")
+            display_signal_table(strong_buy)
+        with ss:
+            st.subheader(f"🔴🔴 STRONG SELL ({len(strong_sell)})")
+            display_signal_table(strong_sell)
+
+        x, y = st.columns(2)
+        with x:
+            st.subheader(f"🟢 BUY ({len(buy)})")
+            display_signal_table(buy)
+        with y:
+            st.subheader(f"🔴 SELL ({len(sell)})")
+            display_signal_table(sell)
+
+        st.download_button(
+            "Download results CSV",
+            sort_by_priority(df_sorted).to_csv(index=False).encode(),
+            "scan_results.csv",
+            "text/csv",
+        )
+    elif df is not None:
+        st.warning("No results returned.")
 
     with st.expander("ℹ️ How this scanner works"):
         st.markdown(
@@ -204,15 +269,33 @@ else:
             - Multi-candle chart patterns
             - OI analysis
             - News sentiment
+            - Fundamentals & Quarterly Results (optional, via Screener.in)
             - Multi-timeframe confirmation
 
             ### Multi-candle patterns included
             - Cup and Handle
             - Double Bottom / Double Top
             - Triangle Breakout / Breakdown
+            - Rising Wedge / Falling Wedge
+            - Rounding Bottom
             - Range Breakout / Breakdown
-            - Flag
-            - Pennant
-            - Head and Shoulders
+            - Flag / Pennant
+            - Head and Shoulders / Inverse Head and Shoulders
+            - Bullish/Bearish Engulfing
+            - Morning Star / Evening Star
+
+            ### Sector View
+            Results are grouped into sector-wise tabs. Within every sector (and
+            overall), **STRONG BUY** and **STRONG SELL** signals are always
+            ranked to the top, followed by BUY/SELL, then HOLD.
+
+            ### Watchlist
+            Add symbols to a persistent watchlist from the sidebar. Watchlist
+            symbols can be scanned exclusively, and their latest results are
+            always shown in a dedicated section after each scan.
+
+            ### Live Auto-Refresh
+            Enable auto-refresh in the sidebar to automatically re-run the
+            scan at a chosen interval without manual clicks.
             """
         )

@@ -5,6 +5,7 @@ import pandas as pd
 DATA_DIR = Path("data")
 LATEST_SCAN_FILE = DATA_DIR / "latest_scan.csv"
 SIGNAL_HISTORY_FILE = DATA_DIR / "signal_history.csv"
+WATCHLIST_FILE = DATA_DIR / "watchlist.csv"
 
 
 def ensure_data_files():
@@ -15,9 +16,10 @@ def ensure_data_files():
 
     if not LATEST_SCAN_FILE.exists():
         pd.DataFrame(columns=[
-            "Symbol", "LTP", "Pattern", "Pattern Direction", "Pattern Confidence",
+            "Symbol", "Sector", "LTP", "Pattern", "Pattern Direction", "Pattern Confidence",
             "TrendScore", "MomentumScore", "VolumeScore", "OI", "OI Note",
-            "News Sentiment", "News Strength", "Top Headline", "Score",
+            "News Sentiment", "News Strength", "Top Headline",
+            "P/E", "ROE %", "Sales QoQ %", "Profit QoQ %", "Score",
             "Bullish %", "Bearish %", "Signal", "Reason"
         ]).to_csv(LATEST_SCAN_FILE, index=False)
 
@@ -26,6 +28,45 @@ def ensure_data_files():
             "Timestamp", "Symbol", "Old Signal", "New Signal",
             "Old Score", "New Score", "Alert Sent", "Reason"
         ]).to_csv(SIGNAL_HISTORY_FILE, index=False)
+
+    if not WATCHLIST_FILE.exists():
+        pd.DataFrame(columns=["Symbol", "Added On"]).to_csv(WATCHLIST_FILE, index=False)
+
+
+def load_watchlist() -> list:
+    """Return list of symbols currently on the watchlist."""
+    ensure_data_files()
+    try:
+        df = pd.read_csv(WATCHLIST_FILE)
+        if "Symbol" in df.columns:
+            return df["Symbol"].dropna().astype(str).tolist()
+    except Exception:
+        pass
+    return []
+
+
+def add_to_watchlist(symbol: str):
+    ensure_data_files()
+    try:
+        df = pd.read_csv(WATCHLIST_FILE)
+    except Exception:
+        df = pd.DataFrame(columns=["Symbol", "Added On"])
+    if "Symbol" in df.columns and symbol in df["Symbol"].astype(str).tolist():
+        return
+    new_row = pd.DataFrame([{"Symbol": symbol, "Added On": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}])
+    df = pd.concat([df, new_row], ignore_index=True)
+    df.to_csv(WATCHLIST_FILE, index=False)
+
+
+def remove_from_watchlist(symbol: str):
+    ensure_data_files()
+    try:
+        df = pd.read_csv(WATCHLIST_FILE)
+    except Exception:
+        return
+    if "Symbol" in df.columns:
+        df = df[df["Symbol"].astype(str) != symbol]
+        df.to_csv(WATCHLIST_FILE, index=False)
 
 
 def load_latest_scan():
