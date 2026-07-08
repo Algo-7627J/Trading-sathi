@@ -27,6 +27,8 @@ from ui_helpers import (
     render_next_day_results,
     render_common_direction_results,
     sort_by_priority,
+    render_compact_table_view,
+    render_compact_cards_view,
 )
 from sectors import add_sector_column
 
@@ -239,8 +241,77 @@ else:
             df_sorted = add_sector_column(df)
 
             section_label("Results")
-            render_sector_tabs(df_sorted)
 
+            # === NEW: Compact / Top Signals controls (for easier interpretation) ===
+            with st.container(border=True):
+                c1, c2, c3, c4 = st.columns([1.4, 1.3, 1.2, 1.3])
+
+                with c1:
+                    display_mode = st.radio(
+                        "Display Mode",
+                        ["Top Signals + Clean Table", "Compact Cards", "Full (with Charts)"],
+                        horizontal=True,
+                        index=0,
+                        key="intraday_display_mode",
+                        help="Top Signals or Compact Cards = much less congested and easier to read"
+                    )
+
+                with c2:
+                    if display_mode != "Full (with Charts)":
+                        top_n = st.slider(
+                            "Show top N signals",
+                            min_value=5,
+                            max_value=35,
+                            value=12,
+                            step=1,
+                            key="intraday_top_n",
+                            help="Only the strongest signals by |Score|"
+                        )
+                    else:
+                        top_n = 0
+
+                with c3:
+                    hide_charts = st.checkbox(
+                        "Hide bar charts",
+                        value=True if display_mode != "Full (with Charts)" else False,
+                        key="intraday_hide_charts",
+                        help="Recommended when bars feel congested"
+                    )
+
+                with c4:
+                    only_high_conv = st.checkbox(
+                        "Only HIGH Conviction",
+                        value=False,
+                        key="intraday_only_high_conv",
+                        help="Show only the most reliable signals (reduces noise & reversals)"
+                    )
+
+            # Prepare the data to display
+            df_to_display = sort_by_priority(df_sorted)
+
+            # Apply HIGH Conviction filter if selected
+            if only_high_conv:
+                # Use the same logic from ui_helpers
+                df_to_display = df_to_display[
+                    df_to_display.apply(
+                        lambda r: str(r.get("MTF Status", "")).lower() == "confirmed"
+                        and abs(float(r.get("Score") or 0)) >= 35,
+                        axis=1
+                    )
+                ]
+
+            if display_mode != "Full (with Charts)" and top_n > 0:
+                df_to_display = df_to_display.head(top_n)
+
+            # Render based on chosen mode
+            if display_mode == "Top Signals + Clean Table":
+                render_compact_table_view(df_to_display, hide_charts=hide_charts)
+            elif display_mode == "Compact Cards":
+                render_compact_cards_view(df_to_display)
+            else:
+                render_sector_tabs(df_sorted)
+
+            # Watchlist section (always clean table)
             if watchlist:
                 wl_df = df_sorted[df_sorted["Symbol"].isin(watchlist)]
                 if not wl_df.empty:
