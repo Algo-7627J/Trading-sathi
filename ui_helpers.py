@@ -746,3 +746,192 @@ def render_next_day_results(df: pd.DataFrame):
         with tab:
             sector_df = df[df["Sector"] == sector]
             render_next_day_panel(sector_df)
+
+
+# =============================================================================
+# NEW: Clean & Compact Views (for easier interpretation - less congested)
+# =============================================================================
+
+def get_conviction(row) -> str:
+    """Public version of conviction calculator (used by both UI and filters)."""
+    return _get_conviction(row)
+
+
+def _get_conviction(row) -> str:
+    """Compute a simple conviction level from existing columns."""
+    mtf = str(row.get("MTF Status", "")).lower()
+    score = row.get("Score")
+    vol = row.get("VolumeScore") or 0
+
+    if pd.isna(score):
+        return "LOW"
+
+    score_val = float(score)
+
+    if mtf == "confirmed" and abs(score_val) >= 45:
+        return "HIGH"
+    elif mtf == "confirmed" or abs(score_val) >= 35:
+        return "MEDIUM"
+    else:
+        return "LOW"
+
+
+def _short_reason(reason: str, max_len: int = 65) -> str:
+    """Shorten the long Reason string for compact display."""
+    if not reason or pd.isna(reason):
+        return ""
+    r = str(reason).replace(" | ", " • ")
+    return r[:max_len] + "..." if len(r) > max_len else r
+
+
+def render_compact_table_view(df: pd.DataFrame, hide_charts: bool = True):
+    """Clean, scannable table view — much easier than dense bar charts."""
+    if df is None or df.empty:
+        st.caption("No data to display.")
+        return
+
+    # Prepare a clean dataframe with only useful columns
+    cols = ["Symbol", "Signal", "Score", "LTP", "MTF Status", "Pattern", "Pattern Confidence",
+            "VolumeScore", "OI Note", "News Sentiment", "Reason"]
+
+    clean_df = df.copy()
+
+    # Add Conviction column
+    clean_df["Conviction"] = clean_df.apply(_get_conviction, axis=1)
+
+    # Keep only columns that exist
+    available = [c for c in cols if c in clean_df.columns]
+    display_df = clean_df[available + (["Conviction"] if "Conviction" not in available else [])].copy()
+
+    # Reorder for readability
+    preferred_order = ["Symbol", "Signal", "Score", "Conviction", "LTP", "MTF Status",
+                       "Pattern", "Pattern Confidence", "VolumeScore", "OI Note",
+                       "News Sentiment", "Reason"]
+    final_cols = [c for c in preferred_order if c in display_df.columns]
+    display_df = display_df[final_cols]
+
+    # Shorten Reason
+    if "Reason" in display_df.columns:
+        display_df["Reason"] = display_df["Reason"].apply(_short_reason)
+
+    # Summary stats
+    render_summary_cards(df)
+
+    # Key insight banner
+    high_conf = len(display_df[display_df.get("Conviction", "") == "HIGH"])
+    st.caption(f"Showing **{len(display_df)}** signals • **{high_conf}** HIGH conviction • Sorted by strength")
+
+    # Legend for easier interpretation
+    with st.expander("📖 How to read this table (click to expand)", expanded=False):
+        st.markdown("""
+        - **Conviction** = Reliability of the signal
+          - **HIGH** → MTF Confirmed + strong score (best signals, less likely to reverse)
+          - **MEDIUM** → Decent confirmation
+          - **LOW** → Weak or conflicting (often reverses after 45-60 mins)
+        - **MTF Status** = Multi-timeframe agreement (Confirmed is strongest)
+        - Use **Only HIGH Conviction** filter + Top N to reduce noise
+        """)
+
+    # Nice dataframe with column config
+    column_config = {
+        "Signal": st.column_config.TextColumn(
+            "Signal",
+            help="Signal strength",
+        ),
+        "Score": st.column_config.NumberColumn("Score", format="%.1f", help="Overall score"),
+        "Conviction": st.column_config.TextColumn("Conviction", help="How reliable the signal looks"),
+        "LTP": st.column_config.NumberColumn("LTP", format="%.2f"),
+        "MTF Status": st.column_config.TextColumn("MTF"),
+        "VolumeScore": st.column_config.NumberColumn("Vol", format="%.1f"),
+    }
+
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config=column_config,
+    )
+
+    # Optional small bar chart only if user wants (default hidden)
+    if not hide_charts and alt is not None:
+        st.markdown("---")
+        st.caption("Score distribution (optional)")
+        render_signal_bar_chart(df.head(15), title="Top Signals by Score", height_per_row=22)
+
+
+def render_compact_cards_view(df: pd.DataFrame):
+    """Very clean card-based layout — great for quick scanning when bars feel congested."""
+    if df is None or df.empty:
+        st.caption("No data to display.")
+        return
+
+    render_summary_cards(df)
+
+    df = sort_by_priority(df).copy()
+    df["Conviction"] = df.apply(_get_conviction, axis=1)
+
+    # Create a responsive grid (3 columns looks good)
+    num_cols = 3
+    rows = [df.iloc[i:i+num_cols] for i in range(0, len(df), num_cols)]
+
+    for row_df in rows:
+        cols = st.columns(num_cols, gap="small")
+
+        for i, (_, row) in enumerate(row_df.iterrows()):
+            with cols[i]:
+                signal = str(row.get("Signal", "HOLD"))
+                score = row.get("Score")
+                conviction = row.get("Conviction", "LOW")
+                ltp = row.get("LTP")
+                mtf = row.get("MTF Status", "")
+                pattern = row.get("Pattern", "")
+                vol = row.get("VolumeScore")
+
+                # Choose colors
+                if "BUY" in signal or "BULL" in signal:
+                    sig_color = GREEN
+                    sig_icon = "🟢"
+                elif "SELL" in signal or "BEAR" in signal:
+                    sig_color = RED
+                    sig_icon = "🔴"
+                else:
+                    sig_color = TEXT_MUTED
+                    sig_icon = "⚪"
+
+                conv_color = GREEN if conviction == "HIGH" else (AMBER if conviction == "MEDIUM" else TEXT_MUTED)
+
+                # Card HTML
+                card_html = f"""
+                <div style="
+                    background: {SURFACE};
+                    border: 1px solid {BORDER};
+                    border-radius: 10px;
+                    padding: 12px 14px;
+                    margin-bottom: 8px;
+                    min-height: 118px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                ">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <div>
+                            <span style="font-size:15px; font-weight:700; color:{TEXT};">{row.get('Symbol','')}</span>
+                        </div>
+                        <div style="font-size:11px; color:{conv_color}; font-weight:600;">
+                            {conviction}
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:17px; font-weight:800; color:{sig_color};">{sig_icon} {signal}</span>
+                        <span style="margin-left:8px; font-size:13px; color:{TEXT_MUTED};">Score: <b>{score}</b></span>
+                    </div>
+
+                    <div style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.35;">
+                        LTP: <b style="color:{TEXT};">{ltp}</b> &nbsp;•&nbsp; MTF: <b>{mtf}</b><br>
+                        {f"Pattern: {pattern}" if pattern and pattern != "None" else ""}
+                        {f"<br>Vol: {vol}" if vol is not None else ""}
+                    </div>
+                </div>
+                """
+                st.markdown(card_html, unsafe_allow_html=True)
+
+    st.caption("💡 Tip: Use the **Top Signals + Clean Table** mode for even faster scanning.")
