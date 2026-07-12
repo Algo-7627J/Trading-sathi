@@ -38,11 +38,7 @@ for k, v in [
 
 df = st.session_state.get("last_scan_df")
 
-render_title(
-    "CODE RED",
-    "Intraday + Next-Day Scanner for NSE F&O",
-    connected=st.session_state.fyers is not None,
-)
+render_title("CODE RED", "Intraday + Next-Day Scanner", connected=st.session_state.fyers is not None)
 
 # ====================== LOGIN SECTION ======================
 if st.session_state.fyers is None:
@@ -50,7 +46,7 @@ if st.session_state.fyers is None:
         st.markdown("### Connect to FYERS")
 
         if fyersModel is None:
-            st.error("fyers_apiv3 not installed. Please add it in requirements.txt")
+            st.error("fyers_apiv3 not installed.")
         else:
             try:
                 session = fyersModel.SessionModel(
@@ -60,12 +56,11 @@ if st.session_state.fyers is None:
                     response_type="code",
                     grant_type="authorization_code"
                 )
-                login_url = session.generate_authcode()
-                st.link_button("Login to FYERS", login_url, type="primary")
+                st.link_button("Login to FYERS", session.generate_authcode(), type="primary")
             except Exception as e:
-                st.error(f"Error generating login URL: {e}")
+                st.error(f"Error: {e}")
 
-        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed", placeholder="Paste your auth_code...")
+        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed")
 
         if st.button("Generate Access Token", type="primary"):
             if not auth_code:
@@ -82,13 +77,13 @@ if st.session_state.fyers is None:
                     session.set_token(auth_code)
                     response = session.generate_token()
 
-                    if response and isinstance(response, dict) and "access_token" in response:
+                    if response and "access_token" in response:
                         token = response["access_token"]
                         st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
                         st.success("Login successful!")
                         st.rerun()
                     else:
-                        st.error(f"Token generation failed. Response: {response}")
+                        st.error("Token generation failed. Please check your auth_code.")
                 except Exception as e:
                     st.error(f"Login failed: {str(e)}")
 
