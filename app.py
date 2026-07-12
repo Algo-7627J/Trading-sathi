@@ -1,4 +1,6 @@
-# ====================== INTRADAY RESULTS SECTION ======================
+# ====================== INTRADAY RESULTS SECTION (FIXED) ======================
+
+df = st.session_state.last_scan_df
 
 if df is not None and not df.empty:
     df_sorted = add_sector_column(df)
