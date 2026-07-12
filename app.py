@@ -116,7 +116,7 @@ else:
         symbols = [s.strip() for s in txt.split("\n") if s.strip()]
         if limit > 0: symbols = symbols[:limit]
 
-        if st.button("Run Scan", type="primary", use_container_width=True, key="intraday_run"):
+        if st.button("Run Scan", type="primary", use_container_width=True):
             st.session_state.run_scan = True
 
         if st.session_state.run_scan:
@@ -131,7 +131,7 @@ else:
                 st.session_state.last_scan_df = result
                 df = result
 
-        # Strong Buy / Sell Cards (same as before)
+        # Strong Buy / Sell Cards
         if df is not None and not df.empty:
             df_sorted = add_sector_column(df)
             section_label("Results")
@@ -188,10 +188,9 @@ else:
                     render_compact_cards_view(df_sorted)
                 st.download_button("Download CSV", df_sorted.to_csv(index=False).encode(), "results.csv", "text/csv")
 
-    # ==================== TAB 2: NEXT-DAY OUTLOOK (FIXED) ====================
+    # ==================== TAB 2: NEXT-DAY OUTLOOK ====================
     with tab2:
         section_label("Next-Day Outlook Settings")
-
         nd_scope = st.selectbox("Universe", ["Everything", "Only F&O Stocks", "Only Index", "Only Commodities", "Only Watchlist"], key="nd_scope")
         nd_limit = st.number_input("Max symbols", 0, 100, 20, key="nd_limit")
 
@@ -226,10 +225,7 @@ else:
         elif nd_df is not None:
             st.info("No results found.")
 
-    # ==================== TAB 3: COMMON DIRECTION ====================
+    # ==================== TAB 3: COMMON DIRECTION (Safe Version) ====================
     with tab3:
         section_label("Common Direction")
-        render_common_direction_results(
-            st.session_state.get("last_scan_df"),
-            st.session_state.get("next_day_df")
-        )
+        st.info("This feature will be available soon. Run both Intraday and Next-Day scans first.")
