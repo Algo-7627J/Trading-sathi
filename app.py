@@ -1,6 +1,6 @@
-# ====================== INTRADAY RESULTS SECTION (FIXED) ======================
+# ====================== INTRADAY RESULTS SECTION ======================
 
-df = st.session_state.last_scan_df
+df = st.session_state.get("last_scan_df", None)
 
 if df is not None and not df.empty:
     df_sorted = add_sector_column(df)
@@ -81,7 +81,7 @@ if df is not None and not df.empty:
         else:
             st.info("No Strong Sell signals found in current scan.")
 
-    # ==================== DEFAULT VIEW (when no card clicked) ====================
+    # ==================== DEFAULT VIEW ====================
     else:
         with st.container(border=True):
             c1, c2, c3, c4 = st.columns([1.4, 1.3, 1.2, 1.3])
@@ -103,7 +103,6 @@ if df is not None and not df.empty:
             with c4:
                 only_high_conv = st.checkbox("Only HIGH Conviction", value=False, key="intraday_only_high_conv")
 
-        # Prepare data
         df_to_display = sort_by_priority(df_sorted)
 
         if only_high_conv:
@@ -118,7 +117,6 @@ if df is not None and not df.empty:
         if display_mode != "Full (with Charts)" and top_n > 0:
             df_to_display = df_to_display.head(top_n)
 
-        # Render based on mode
         if display_mode == "Top Signals + Clean Table":
             render_compact_table_view(df_to_display, hide_charts=hide_charts)
         elif display_mode == "Compact Cards":
@@ -126,14 +124,12 @@ if df is not None and not df.empty:
         else:
             render_sector_tabs(df_sorted)
 
-        # Watchlist section
         if watchlist:
             wl_df = df_sorted[df_sorted["Symbol"].isin(watchlist)]
             if not wl_df.empty:
                 section_label(f"Watchlist ({len(wl_df)})")
                 st.dataframe(sort_by_priority(wl_df), use_container_width=True, hide_index=True)
 
-        # Download button
         st.download_button(
             "Download results CSV",
             sort_by_priority(df_sorted).to_csv(index=False).encode(),
