@@ -48,39 +48,56 @@ render_title(
 if st.session_state.fyers is None:
     with st.container(border=True):
         st.markdown("### Connect to FYERS")
+
         if fyersModel is None:
-            st.error("fyers_apiv3 not installed.")
+            st.error("fyers_apiv3 not installed. Add it in requirements.txt")
         else:
             try:
                 session = fyersModel.SessionModel(
-                    client_id=APP_ID, secret_key=SECRET_KEY,
-                    redirect_uri=REDIRECT_URL, response_type="code",
+                    client_id=APP_ID,
+                    secret_key=SECRET_KEY,
+                    redirect_uri=REDIRECT_URL,
+                    response_type="code",
                     grant_type="authorization_code"
                 )
-                st.link_button("Login to FYERS", session.generate_authcode(), type="primary")
+                login_url = session.generate_authcode()
+                st.link_button("Login to FYERS", login_url, type="primary")
             except Exception as e:
-                st.error(str(e))
+                st.error(f"Unable to generate login URL: {e}")
 
-        auth_code = st.text_input("Paste auth_code", label_visibility="collapsed")
+        st.caption("Step 2: Paste the auth_code below")
+        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed", placeholder="Paste auth_code...")
+
         if st.button("Generate Access Token", type="primary"):
-            if auth_code:
+            if not auth_code:
+                st.error("Please paste the auth_code first.")
+            else:
                 try:
                     session = fyersModel.SessionModel(
-                        client_id=APP_ID, secret_key=SECRET_KEY,
-                        redirect_uri=REDIRECT_URL, response_type="code",
+                        client_id=APP_ID,
+                        secret_key=SECRET_KEY,
+                        redirect_uri=REDIRECT_URL,
+                        response_type="code",
                         grant_type="authorization_code"
                     )
                     session.set_token(auth_code)
                     response = session.generate_token()
-                    if "access_token" in response:
+
+                    if response and isinstance(response, dict) and "access_token" in response:
                         token = response["access_token"]
-                        st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
+                        st.session_state.access_token = token
+                        st.session_state.fyers = fyersModel.FyersModel(
+                            client_id=APP_ID, token=token, log_path=""
+                        )
                         st.success("Login successful!")
                         st.rerun()
+                    else:
+                        st.error(f"Token generation failed. Response: {response}")
                 except Exception as e:
-                    st.error(f"Login failed: {e}")
+                    st.error(f"Login failed: {str(e)}")
+
+# ====================== MAIN APP (AFTER LOGIN) ======================
 else:
-    # ====================== AFTER LOGIN ======================
     try:
         with st.sidebar:
             st.markdown("**CODE RED**")
@@ -269,4 +286,4 @@ else:
                 st.info("Please run an Intraday scan first to see Sector Trend.")
 
     except Exception as e:
-        st.error(f"App Error after login: {e}")
+        st.error(f"App Error: {e}")
