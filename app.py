@@ -18,7 +18,7 @@ from ui_helpers import (
 )
 from sectors import add_sector_column
 
-st.set_page_config(page_title="Trading Sathi", layout="wide", page_icon="📊")
+st.set_page_config(page_title="CODE RED", layout="wide", page_icon="📊")
 inject_custom_css()
 ensure_data_files()
 
@@ -38,7 +38,11 @@ for k, v in [
 
 df = st.session_state.get("last_scan_df")
 
-render_title("Trading Sathi", "Intraday + Next-Day Scanner", connected=st.session_state.fyers is not None)
+render_title(
+    "CODE RED",
+    "Intraday + Next-Day Scanner for NSE F&O, Index & Commodity",
+    connected=st.session_state.fyers is not None,
+)
 
 if st.session_state.fyers is None:
     with st.container(border=True):
@@ -76,7 +80,7 @@ if st.session_state.fyers is None:
                     st.error(f"Login failed: {e}")
 else:
     with st.sidebar:
-        st.markdown("**Trading Sathi**")
+        st.markdown("**CODE RED**")
         uni = build_universe()
         st.divider()
         render_watchlist_manager(uni["all"])
@@ -225,7 +229,7 @@ else:
         elif nd_df is not None:
             st.info("No results found.")
 
-    # ==================== TAB 3: COMMON DIRECTION (Safe Version) ====================
+    # ==================== TAB 3: COMMON DIRECTION ====================
     with tab3:
         section_label("Common Direction")
         st.info("This feature will be available soon. Run both Intraday and Next-Day scans first.")
