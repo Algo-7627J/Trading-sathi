@@ -236,38 +236,41 @@ else:
         elif nd_df is not None:
             st.info("No results found.")
 
-    # ==================== TAB 3: SECTOR TREND ====================
+    # ==================== TAB 3: SECTOR TREND (STABLE VERSION) ====================
     with tab3:
         section_label("Sector Trend Analysis")
 
         if df is not None and not df.empty:
             df_sorted = add_sector_column(df)
 
-            # Group by sector and calculate bullish/bearish strength
-            sector_summary = df_sorted.groupby("Sector").agg(
-                Total_Signals=("Symbol", "count"),
-                Bullish=("Signal", lambda x: x.str.contains("Buy|Bullish", case=False).sum()),
-                Bearish=("Signal", lambda x: x.str.contains("Sell|Bearish", case=False).sum()),
-                Avg_Score=("Score", "mean")
-            ).reset_index()
+            try:
+                # Safe grouping
+                sector_data = df_sorted.groupby("Sector").agg(
+                    Total=("Symbol", "count"),
+                    Bullish=("Signal", lambda x: x.str.contains("Buy|Bullish", case=False, na=False).sum()),
+                    Bearish=("Signal", lambda x: x.str.contains("Sell|Bearish", case=False, na=False).sum()),
+                    Avg_Score=("Score", "mean")
+                ).reset_index()
 
-            sector_summary["Bullish %"] = (sector_summary["Bullish"] / sector_summary["Total_Signals"] * 100).round(1)
-            sector_summary["Bearish %"] = (sector_summary["Bearish"] / sector_summary["Total_Signals"] * 100).round(1)
+                sector_data["Bullish %"] = (sector_data["Bullish"] / sector_data["Total"] * 100).round(1)
+                sector_data["Bearish %"] = (sector_data["Bearish"] / sector_data["Total"] * 100).round(1)
 
-            col1, col2 = st.columns(2)
+                col1, col2 = st.columns(2)
 
-            with col1:
-                st.markdown("### 🟢 Most Bullish Sectors")
-                bullish = sector_summary.sort_values("Bullish %", ascending=False).head(6)
-                st.dataframe(bullish[["Sector", "Total_Signals", "Bullish", "Bullish %", "Avg_Score"]], 
-                            use_container_width=True, hide_index=True)
+                with col1:
+                    st.markdown("### 🟢 Most Bullish Sectors")
+                    bullish_df = sector_data.sort_values("Bullish %", ascending=False).head(6)
+                    st.dataframe(bullish_df[["Sector", "Total", "Bullish", "Bullish %", "Avg_Score"]], 
+                                use_container_width=True, hide_index=True)
 
-            with col2:
-                st.markdown("### 🔴 Most Bearish Sectors")
-                bearish = sector_summary.sort_values("Bearish %", ascending=False).head(6)
-                st.dataframe(bearish[["Sector", "Total_Signals", "Bearish", "Bearish %", "Avg_Score"]], 
-                            use_container_width=True, hide_index=True)
+                with col2:
+                    st.markdown("### 🔴 Most Bearish Sectors")
+                    bearish_df = sector_data.sort_values("Bearish %", ascending=False).head(6)
+                    st.dataframe(bearish_df[["Sector", "Total", "Bearish", "Bearish %", "Avg_Score"]], 
+                                use_container_width=True, hide_index=True)
 
-            st.caption("Sector strength is calculated from the latest Intraday scan results.")
+            except Exception as e:
+                st.error(f"Error in Sector Trend: {e}")
+
         else:
             st.info("Please run an Intraday scan first to see Sector Trend analysis.")
