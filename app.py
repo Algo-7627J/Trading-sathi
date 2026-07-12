@@ -13,7 +13,7 @@ from next_day import scan_next_day
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
     inject_custom_css, render_title, section_label, render_stat_row,
-    render_sector_tabs, render_watchlist_manager, render_next_day_results,
+    render_watchlist_manager, render_next_day_results,
     sort_by_priority, render_compact_table_view, render_compact_cards_view
 )
 from sectors import add_sector_column
@@ -40,7 +40,7 @@ df = st.session_state.get("last_scan_df")
 
 render_title(
     "CODE RED",
-    "Intraday + Next-Day Scanner for NSE F&O, Index & Commodity",
+    "Intraday + Next-Day Scanner for NSE F&O",
     connected=st.session_state.fyers is not None,
 )
 
@@ -50,7 +50,7 @@ if st.session_state.fyers is None:
         st.markdown("### Connect to FYERS")
 
         if fyersModel is None:
-            st.error("fyers_apiv3 not installed. Add it in requirements.txt")
+            st.error("fyers_apiv3 not installed. Please add it in requirements.txt")
         else:
             try:
                 session = fyersModel.SessionModel(
@@ -63,10 +63,9 @@ if st.session_state.fyers is None:
                 login_url = session.generate_authcode()
                 st.link_button("Login to FYERS", login_url, type="primary")
             except Exception as e:
-                st.error(f"Unable to generate login URL: {e}")
+                st.error(f"Error generating login URL: {e}")
 
-        st.caption("Step 2: Paste the auth_code below")
-        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed", placeholder="Paste auth_code...")
+        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed", placeholder="Paste your auth_code...")
 
         if st.button("Generate Access Token", type="primary"):
             if not auth_code:
@@ -85,10 +84,7 @@ if st.session_state.fyers is None:
 
                     if response and isinstance(response, dict) and "access_token" in response:
                         token = response["access_token"]
-                        st.session_state.access_token = token
-                        st.session_state.fyers = fyersModel.FyersModel(
-                            client_id=APP_ID, token=token, log_path=""
-                        )
+                        st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
                         st.success("Login successful!")
                         st.rerun()
                     else:
@@ -96,7 +92,7 @@ if st.session_state.fyers is None:
                 except Exception as e:
                     st.error(f"Login failed: {str(e)}")
 
-# ====================== MAIN APP (AFTER LOGIN) ======================
+# ====================== MAIN APP ======================
 else:
     try:
         with st.sidebar:
@@ -254,7 +250,6 @@ else:
 
             if df is not None and not df.empty:
                 df_sorted = add_sector_column(df)
-
                 try:
                     sector_data = df_sorted.groupby("Sector").agg(
                         Total=("Symbol", "count"),
@@ -267,19 +262,14 @@ else:
                     sector_data["Bearish %"] = (sector_data["Bearish"] / sector_data["Total"] * 100).round(1)
 
                     col1, col2 = st.columns(2)
-
                     with col1:
                         st.markdown("### 🟢 Most Bullish Sectors")
-                        bullish_df = sector_data.sort_values("Bullish %", ascending=False).head(6)
-                        st.dataframe(bullish_df[["Sector", "Total", "Bullish", "Bullish %", "Avg_Score"]], 
+                        st.dataframe(sector_data.sort_values("Bullish %", ascending=False).head(6)[["Sector", "Total", "Bullish", "Bullish %", "Avg_Score"]], 
                                     use_container_width=True, hide_index=True)
-
                     with col2:
                         st.markdown("### 🔴 Most Bearish Sectors")
-                        bearish_df = sector_data.sort_values("Bearish %", ascending=False).head(6)
-                        st.dataframe(bearish_df[["Sector", "Total", "Bearish", "Bearish %", "Avg_Score"]], 
+                        st.dataframe(sector_data.sort_values("Bearish %", ascending=False).head(6)[["Sector", "Total", "Bearish", "Bearish %", "Avg_Score"]], 
                                     use_container_width=True, hide_index=True)
-
                 except Exception as e:
                     st.error(f"Sector Trend Error: {e}")
             else:
