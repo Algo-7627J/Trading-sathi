@@ -97,7 +97,7 @@ else:
     ])
 
     watchlist = load_watchlist()
-    tab1, tab2, tab3 = st.tabs(["Intraday Scanner", "Next-Day Outlook", "Common Direction"])
+    tab1, tab2, tab3 = st.tabs(["Intraday Scanner", "Next-Day Outlook", "Sector Trend"])
 
     # ==================== TAB 1: INTRADAY ====================
     with tab1:
@@ -107,7 +107,7 @@ else:
         with c2: timeframe_mode = st.selectbox("Timeframe", list(TIMEFRAME_OPTIONS.keys()), index=2)
         with c3: include_news = st.checkbox("News", value=True)
         with c4: include_fund = st.checkbox("Fundamentals", value=False)
-        with c5: limit = st.number_input("Max symbols", 0, 100, 25)
+        with c5: limit = st.number_input("Max symbols (0 = All)", min_value=0, value=0, step=5)
 
         if scope == "Only F&O Stocks": chosen = uni["stocks"]
         elif scope == "Only Index": chosen = uni["indices"]
@@ -118,7 +118,10 @@ else:
         with st.expander("Edit Symbols"):
             txt = st.text_area("Symbols", value="\n".join(chosen), height=160, label_visibility="collapsed")
         symbols = [s.strip() for s in txt.split("\n") if s.strip()]
-        if limit > 0: symbols = symbols[:limit]
+
+        # FIXED: Only apply limit if user sets value > 0
+        if limit > 0:
+            symbols = symbols[:limit]
 
         if st.button("Run Scan", type="primary", use_container_width=True):
             st.session_state.run_scan = True
@@ -135,7 +138,7 @@ else:
                 st.session_state.last_scan_df = result
                 df = result
 
-        # ==================== STRONG BUY & STRONG SELL CARDS (FIXED) ====================
+        # Strong Buy / Sell Cards
         if df is not None and not df.empty:
             df_sorted = add_sector_column(df)
             section_label("Results")
@@ -144,7 +147,6 @@ else:
             strong_sell = df_sorted[df_sorted["Signal"].str.contains("Strong Sell|Sell", case=False, na=False)]
 
             c1, c2 = st.columns(2)
-
             with c1:
                 st.markdown(
                     '<div style="background:#052e16; border:1px solid #16a34a; padding:20px; border-radius:14px; text-align:center; color:white;">'
@@ -201,11 +203,11 @@ else:
                     render_compact_cards_view(df_sorted)
                 st.download_button("Download CSV", df_sorted.to_csv(index=False).encode(), "results.csv", "text/csv")
 
-    # ==================== TAB 2: NEXT-DAY OUTLOOK ====================
+    # ==================== TAB 2: NEXT-DAY OUTLOOK (WITH CARD VIEW) ====================
     with tab2:
         section_label("Next-Day Outlook Settings")
         nd_scope = st.selectbox("Universe", ["Everything", "Only F&O Stocks", "Only Index", "Only Commodities", "Only Watchlist"], key="nd_scope")
-        nd_limit = st.number_input("Max symbols", 0, 100, 20, key="nd_limit")
+        nd_limit = st.number_input("Max symbols (0 = All)", min_value=0, value=0, step=5, key="nd_limit")
 
         if nd_scope == "Only F&O Stocks": nd_chosen = uni["stocks"]
         elif nd_scope == "Only Index": nd_chosen = uni["indices"]
@@ -233,12 +235,27 @@ else:
         if nd_df is not None and not nd_df.empty:
             nd_df = add_sector_column(nd_df)
             section_label("Next-Day Results")
+
+            # Next-Day Strong Buy / Sell Cards
+            nd_strong_buy = nd_df[nd_df["Next Day Signal"].str.contains("Bullish|Buy", case=False, na=False)]
+            nd_strong_sell = nd_df[nd_df["Next Day Signal"].str.contains("Bearish|Sell", case=False, na=False)]
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f'<div style="background:#052e16; border:1px solid #16a34a; padding:18px; border-radius:14px; text-align:center; color:white;">'
+                            f'<div style="font-size:15px;">🟢 BULLISH</div>'
+                            f'<div style="font-size:38px; font-weight:800;">{len(nd_strong_buy)}</div></div>', unsafe_allow_html=True)
+            with c2:
+                st.markdown(f'<div style="background:#450a0a; border:1px solid #b91c1c; padding:18px; border-radius:14px; text-align:center; color:white;">'
+                            f'<div style="font-size:15px;">🔴 BEARISH</div>'
+                            f'<div style="font-size:38px; font-weight:800;">{len(nd_strong_sell)}</div></div>', unsafe_allow_html=True)
+
             render_next_day_results(nd_df)
             st.download_button("Download Next-Day CSV", nd_df.to_csv(index=False).encode(), "next_day_results.csv", "text/csv")
         elif nd_df is not None:
             st.info("No results found.")
 
-    # ==================== TAB 3: COMMON DIRECTION ====================
+    # ==================== TAB 3: SECTOR TREND ====================
     with tab3:
-        section_label("Common Direction")
-        st.info("This feature will be available soon. Run both Intraday and Next-Day scans first.")
+        section_label("Sector Trend Analysis")
+        st.info("Sector Trend feature will be added in the next update. Currently under development.")
