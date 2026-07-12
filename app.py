@@ -40,13 +40,13 @@ df = st.session_state.get("last_scan_df")
 
 render_title("CODE RED", "Intraday + Next-Day Scanner", connected=st.session_state.fyers is not None)
 
-# ====================== LOGIN SECTION ======================
+# ====================== LOGIN SECTION (VERY DEFENSIVE) ======================
 if st.session_state.fyers is None:
     with st.container(border=True):
         st.markdown("### Connect to FYERS")
 
         if fyersModel is None:
-            st.error("fyers_apiv3 not installed.")
+            st.error("fyers_apiv3 not installed. Add it in requirements.txt")
         else:
             try:
                 session = fyersModel.SessionModel(
@@ -58,9 +58,9 @@ if st.session_state.fyers is None:
                 )
                 st.link_button("Login to FYERS", session.generate_authcode(), type="primary")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error generating login URL: {e}")
 
-        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed")
+        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed", placeholder="Paste your auth_code...")
 
         if st.button("Generate Access Token", type="primary"):
             if not auth_code:
@@ -77,15 +77,19 @@ if st.session_state.fyers is None:
                     session.set_token(auth_code)
                     response = session.generate_token()
 
-                    if response and "access_token" in response:
+                    # Very safe check
+                    if response and isinstance(response, dict) and "access_token" in response:
                         token = response["access_token"]
                         st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
                         st.success("Login successful!")
                         st.rerun()
                     else:
                         st.error("Token generation failed. Please check your auth_code.")
+                        st.write("Response received:", response)
+                        
                 except Exception as e:
                     st.error(f"Login failed: {str(e)}")
+                    st.write("Please try again with a fresh auth_code.")
 
 # ====================== MAIN APP ======================
 else:
