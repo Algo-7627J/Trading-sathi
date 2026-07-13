@@ -6,12 +6,12 @@ try:
 except:
     fyersModel = None
 
-# ====================== BULLETPROOF CONFIG (NO MORE IMPORT ERROR) ======================
-# This block guarantees the variables ALWAYS exist.
+# ====================== BULLETPROOF CONFIG + SECRETS LOADING (FIXED FOR CLOUD) ======================
+# This block guarantees the variables ALWAYS exist, even if everything fails.
 
 import os
 
-# === SAFE DEFAULTS ===
+# === SAFE DEFAULTS (will be overwritten by secrets) ===
 APP_ID = "YOUR_FYERS_APP_ID"
 SECRET_KEY = "YOUR_FYERS_SECRET_KEY"
 REDIRECT_URL = "https://your-redirect-url.com"
@@ -27,41 +27,88 @@ SECTOR_TIMEFRAMES = {
     "1 Month": "1M"
 }
 
-# Load from config.py (if real values exist)
+# 1. Load from config.py (only if real values)
 try:
     from config import (
         APP_ID as _a, SECRET_KEY as _s, REDIRECT_URL as _r,
         TIMEFRAME_OPTIONS as _t, SECTOR_TIMEFRAMES as _se
     )
-    if _a and "YOUR_FYERS" not in str(_a): APP_ID = _a
-    if _s and "YOUR_FYERS" not in str(_s): SECRET_KEY = _s
+    if _a and "YOUR_FYERS" not in str(_a).upper(): APP_ID = _a
+    if _s and "YOUR_FYERS" not in str(_s).upper(): SECRET_KEY = _s
     if _r and "your-redirect" not in str(_r).lower(): REDIRECT_URL = _r
     if _t: TIMEFRAME_OPTIONS = _t
     if _se: SECTOR_TIMEFRAMES = _se
 except Exception:
     pass
 
-# Load from Streamlit Secrets (MOST IMPORTANT for Cloud)
-try:
-    import streamlit as st
-    if hasattr(st, "secrets"):
-        sec = st.secrets
-        
-        # Support both flat and [fyers] section
-        if "APP_ID" in sec:
-            APP_ID = sec["APP_ID"]
-        if "SECRET_KEY" in sec:
-            SECRET_KEY = sec["SECRET_KEY"]
-        if "REDIRECT_URL" in sec:
-            REDIRECT_URL = sec["REDIRECT_URL"]
+# 2. Load from Streamlit Secrets - FINAL ULTRA-ROBUST LOADER (catches all formats)
+# We assign DIRECTLY to variables (no globals hack)
+_secrets_source = "defaults"
 
-        fyers_sec = sec.get("fyers", {})
-        if isinstance(fyers_sec, dict):
-            APP_ID = fyers_sec.get("APP_ID", APP_ID)
-            SECRET_KEY = fyers_sec.get("SECRET_KEY", SECRET_KEY)
-            REDIRECT_URL = fyers_sec.get("REDIRECT_URL", REDIRECT_URL)
-except Exception:
-    pass
+def _load_from_secrets():
+    global APP_ID, SECRET_KEY, REDIRECT_URL
+    if not (hasattr(st, "secrets") and st.secrets):
+        return "no_secrets_object"
+
+    sec = st.secrets
+    source = "defaults"
+
+    # Helper - tries many ways to read one key
+    def get_val(key, section="fyers"):
+        # 1. [fyers] dot notation
+        try:
+            if hasattr(sec, section):
+                sub = getattr(sec, section)
+                if hasattr(sub, key) and getattr(sub, key):
+                    return str(getattr(sub, key)).strip(), "[fyers].dot"
+        except: pass
+
+        # 2. [fyers] dict
+        try:
+            if section in sec:
+                sub = sec[section]
+                if isinstance(sub, dict) and key in sub and sub[key]:
+                    return str(sub[key]).strip(), "[fyers].dict"
+                if hasattr(sub, key) and getattr(sub, key):
+                    return str(getattr(sub, key)).strip(), "[fyers].attr"
+        except: pass
+
+        # 3. Flat keys at top level
+        try:
+            if key in sec and sec[key]:
+                return str(sec[key]).strip(), "flat"
+        except: pass
+        try:
+            if hasattr(sec, key) and getattr(sec, key):
+                return str(getattr(sec, key)).strip(), "flat_attr"
+        except: pass
+
+        return None, None
+
+    # Load APP_ID
+    val, src = get_val("APP_ID")
+    if val and "YOUR" not in val.upper() and "PLACEHOLDER" not in val.upper():
+        APP_ID = val
+        source = src
+
+    # Load SECRET_KEY
+    val, src = get_val("SECRET_KEY")
+    if val and "YOUR" not in val.upper() and "PLACEHOLDER" not in val.upper():
+        SECRET_KEY = val
+        source = src
+
+    # Load REDIRECT_URL
+    val, src = get_val("REDIRECT_URL")
+    if val and "your-redirect" not in val.lower() and "PLACEHOLDER" not in val.upper():
+        REDIRECT_URL = val
+        source = src
+
+    return source
+
+try:
+    _secrets_source = _load_from_secrets()
+except Exception as e:
+    _secrets_source = f"error: {str(e)[:80]}"
 # ====================== END BULLETPROOF CONFIG ======================
 from services import build_universe
 from analysis import scan_universe
@@ -79,14 +126,19 @@ st.set_page_config(page_title="CODE RED", layout="wide", page_icon="📊")
 inject_custom_css()
 ensure_data_files()
 
-# ====================== ULTRA VISIBLE CREDENTIAL DEBUG (NO EXPANDER, ALWAYS AT TOP - NO CLICK) ======================
-st.markdown("## 🔴 **CREDENTIAL STATUS (ALWAYS VISIBLE - NO CLICK / NO BOX)**")
-st.caption("This debug is shown unconditionally at the very top on every load. No expanders used.")
+# ====================== ULTRA VISIBLE CREDENTIAL DEBUG (NO EXPANDER - ALWAYS AT VERY TOP) ======================
+st.markdown("## 🔴 **CREDENTIAL STATUS (ALWAYS VISIBLE - NO CLICK REQUIRED)**")
+st.caption("This block appears on **every single page load** unconditionally. No box, no expander.")
 
-# Display current loaded values (masked)
-app_id_clean = "PLACEHOLDER" if (not APP_ID or "YOUR" in str(APP_ID) or "PLACEHOLDER" in str(APP_ID)) else str(APP_ID)
-secret_clean = "PLACEHOLDER" if (not SECRET_KEY or "YOUR" in str(SECRET_KEY) or "PLACEHOLDER" in str(SECRET_KEY)) else str(SECRET_KEY)
-redirect_clean = "PLACEHOLDER" if (not REDIRECT_URL or "your-redirect" in str(REDIRECT_URL).lower() or "PLACEHOLDER" in str(REDIRECT_URL)) else str(REDIRECT_URL)
+# Show loading source
+src = globals().get("_secrets_source", "defaults (no secrets detected)")
+st.write(f"**Loaded from:** `{src}`")
+st.caption("If this still says 'defaults' after correct secrets + reboot, the loading code needs to catch your format.")
+
+# Masked display
+app_id_clean = "PLACEHOLDER" if (not APP_ID or "YOUR" in str(APP_ID).upper() or len(str(APP_ID)) < 5) else str(APP_ID).strip()
+secret_clean = "PLACEHOLDER" if (not SECRET_KEY or "YOUR" in str(SECRET_KEY).upper() or len(str(SECRET_KEY)) < 10) else str(SECRET_KEY).strip()
+redirect_clean = "PLACEHOLDER" if (not REDIRECT_URL or "your-redirect" in str(REDIRECT_URL).lower() or len(str(REDIRECT_URL)) < 10) else str(REDIRECT_URL).strip()
 
 app_id_display = app_id_clean if app_id_clean == "PLACEHOLDER" else (app_id_clean[:8] + "..." + app_id_clean[-4:] if len(app_id_clean) > 12 else app_id_clean)
 secret_display = f"{len(secret_clean)} characters" if secret_clean != "PLACEHOLDER" else "❌ NOT LOADED"
@@ -96,47 +148,95 @@ st.write(f"**APP_ID:** `{app_id_display}`")
 st.write(f"**SECRET_KEY:** `{secret_display}`")
 st.write(f"**REDIRECT_URL:** `{redirect_display}`")
 
-# Secrets keys diagnostic (never shows actual secret values)
+# === RAW SECRETS INSPECTION (EXTREMELY DETAILED - tells us exactly what Cloud is giving) ===
+st.markdown("**🔍 RAW SECRETS INSPECTION (copy this entire section and send me):**")
 try:
     if hasattr(st, "secrets") and st.secrets:
         sec = st.secrets
-        top_keys = list(sec.keys()) if hasattr(sec, "keys") else []
+        
+        # 1. Type and top keys
+        sec_type = str(type(sec))
+        try:
+            top_keys = list(sec.keys())
+        except:
+            top_keys = "cannot list keys"
+        st.write(f"• Type of st.secrets: `{sec_type}`")
+        st.write(f"• Top-level keys: `{top_keys}`")
+        
+        # 2. Check [fyers] in every possible way
+        fyers_found = False
         fyers_keys = []
+        fyers_app_exists = False
+        
+        # way 1: dict
         if "fyers" in sec:
-            fsec = sec.get("fyers", {})
-            if isinstance(fsec, dict):
-                fyers_keys = list(fsec.keys())
+            fyers_found = True
+            f = sec["fyers"]
+            if isinstance(f, dict):
+                fyers_keys = list(f.keys())
+                fyers_app_exists = "APP_ID" in f and bool(f.get("APP_ID"))
             else:
-                fyers_keys = [f"(type: {type(fsec)})"]
-        st.caption(f"**Secrets diagnostic:** top-level keys = {top_keys} | [fyers] keys = {fyers_keys}")
+                fyers_keys = [x for x in dir(f) if not x.startswith("_")]
+                fyers_app_exists = hasattr(f, "APP_ID") and bool(getattr(f, "APP_ID", None))
+        
+        # way 2: dot
+        if not fyers_found and hasattr(sec, "fyers"):
+            fyers_found = True
+            f = sec.fyers
+            fyers_keys = [x for x in dir(f) if not x.startswith("_")]
+            fyers_app_exists = hasattr(f, "APP_ID") and bool(getattr(f, "APP_ID", None))
+        
+        st.write(f"• [fyers] section found: **{fyers_found}**")
+        st.write(f"• Keys inside [fyers]: `{fyers_keys}`")
+        st.write(f"• APP_ID exists inside [fyers]: **{fyers_app_exists}**")
+        
+        # 3. Final direct read test
+        try:
+            direct = None
+            if "fyers" in sec:
+                f = sec["fyers"]
+                direct = f.get("APP_ID") if isinstance(f, dict) else getattr(f, "APP_ID", None)
+            elif hasattr(sec, "fyers"):
+                direct = getattr(sec.fyers, "APP_ID", None)
+            
+            if direct:
+                st.success(f"✅ SUCCESS: st.secrets can read APP_ID (length={len(str(direct))})")
+            else:
+                st.error("❌ st.secrets CANNOT read APP_ID even though section exists")
+        except Exception as de:
+            st.error(f"❌ Direct read test error: {str(de)[:70]}")
     else:
-        st.caption("**Secrets diagnostic:** st.secrets not available (likely local run without secrets.toml)")
+        st.error("❌ st.secrets object does NOT exist in this run")
 except Exception as e:
-    st.caption(f"**Secrets diagnostic error:** {str(e)}")
+    st.error(f"❌ RAW INSPECTION CRASHED: {str(e)[:100]}")
 
+# Status
 if app_id_clean == "PLACEHOLDER" or secret_clean == "PLACEHOLDER":
-    st.error("**❌ REAL CREDENTIALS NOT LOADED FROM SECRETS** → This is causing 'invalid app id hash' (code -5)")
+    st.error("**❌ CREDENTIALS NOT LOADED FROM SECRETS** → This is 100% causing code -5")
     
-    st.markdown("**FIX (do EXACTLY these steps):**")
-    st.markdown("1. On your deployed app, click **Manage app** (bottom right)")
-    st.markdown("2. Go to **Settings → Secrets**")
-    st.markdown("3. **Delete everything** currently in the secrets box")
-    st.markdown("4. Paste **only** the following (replace placeholders with your **exact** FYERS values):")
-    
+    st.markdown("### Exact copy-paste you must use in Cloud Secrets (delete everything first):")
     st.code("""[fyers]
-APP_ID = "ABCD1234-100"                     # ← Exact App ID from FYERS dashboard
-SECRET_KEY = "your-full-secret-key-here"    # ← Exact Secret Key from FYERS
-REDIRECT_URL = "https://your-app.streamlit.app"   # ← Must exactly match FYERS registered redirect""", language="toml")
+APP_ID = "ABCD1234-100"                     # ← Replace with your exact FYERS App ID
+SECRET_KEY = "your-full-secret-key-here"    # ← Replace with your exact FYERS Secret Key
+REDIRECT_URL = "https://your-app-name.streamlit.app"   # ← Replace with your exact app URL""", language="toml")
     
-    st.warning("5. Click **Save**")
-    st.warning("6. Click **Reboot app**")
-    st.info("7. Refresh this page (or use Force Refresh button below). Values above must change from PLACEHOLDER.")
-    st.markdown("**If still PLACEHOLDER after reboot:** check exact TOML format / section name `[fyers]` (case sensitive).")
+    st.warning("Steps (do in order):")
+    st.markdown("1. Deployed app → **Manage app** (bottom right)")
+    st.markdown("2. **Settings → Secrets**")
+    st.markdown("3. **Select all + Delete** everything in the box")
+    st.markdown("4. Paste the block above (with your real values)")
+    st.markdown("5. Click **Save**")
+    st.markdown("6. Click **Reboot app**")
+    st.info("After reboot → refresh page and **copy-paste here** exactly what the 3 lines (APP_ID, SECRET_KEY, REDIRECT_URL) show above.")
 else:
-    st.success("✅ **REAL CREDENTIALS LOADED FROM SECRETS** (values shown masked above)")
-    st.info("Since credentials are loaded, the 'code -5' is likely because the actual APP_ID / SECRET_KEY values you entered do not match your FYERS app registration (common: copy-paste error, app not active, or redirect URL mismatch).")
+    st.success("✅ **CREDENTIALS SUCCESSFULLY LOADED** from Streamlit Secrets")
+    st.markdown("If you **still** get code -5 even after this shows real values:")
+    st.markdown("- Double-check the exact values in FYERS My API (copy again)")
+    st.markdown("- Make sure Redirect URL in FYERS is **identical** to what you put above")
+    st.markdown("- Make sure the app is **Active** in FYERS dashboard")
+    st.markdown("- Generate a **new auth_code** (old one may be invalid)")
 
-if st.button("🔄 Force Refresh Secrets / Rerun Page", key="force_creds_refresh_top"):
+if st.button("🔄 Force Refresh (click after Save + Reboot)", key="force_creds"):
     st.rerun()
 
 st.divider()
