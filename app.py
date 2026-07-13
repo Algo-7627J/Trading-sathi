@@ -8,11 +8,10 @@ except:
 
 # ====================== BULLETPROOF CONFIG (NO MORE IMPORT ERROR) ======================
 # This block guarantees the variables ALWAYS exist.
-# Even if config.py is deleted or broken, the app will run.
 
 import os
 
-# === SAFE DEFAULTS (always defined) ===
+# === SAFE DEFAULTS ===
 APP_ID = "YOUR_FYERS_APP_ID"
 SECRET_KEY = "YOUR_FYERS_SECRET_KEY"
 REDIRECT_URL = "https://your-redirect-url.com"
@@ -28,7 +27,7 @@ SECTOR_TIMEFRAMES = {
     "1 Month": "1M"
 }
 
-# Try loading from config.py (optional - will not crash if missing)
+# Load from config.py (if real values exist)
 try:
     from config import (
         APP_ID as _a, SECRET_KEY as _s, REDIRECT_URL as _r,
@@ -40,23 +39,27 @@ try:
     if _t: TIMEFRAME_OPTIONS = _t
     if _se: SECTOR_TIMEFRAMES = _se
 except Exception:
-    # Completely safe fallback - app continues normally
     pass
 
-# Load from Streamlit Secrets (IMPORTANT for Cloud deployment)
+# Load from Streamlit Secrets (MOST IMPORTANT for Cloud)
 try:
     import streamlit as st
     if hasattr(st, "secrets"):
         sec = st.secrets
-        if "APP_ID" in sec: APP_ID = sec["APP_ID"]
-        if "SECRET_KEY" in sec: SECRET_KEY = sec["SECRET_KEY"]
-        if "REDIRECT_URL" in sec: REDIRECT_URL = sec["REDIRECT_URL"]
+        
+        # Support both flat and [fyers] section
+        if "APP_ID" in sec:
+            APP_ID = sec["APP_ID"]
+        if "SECRET_KEY" in sec:
+            SECRET_KEY = sec["SECRET_KEY"]
+        if "REDIRECT_URL" in sec:
+            REDIRECT_URL = sec["REDIRECT_URL"]
 
-        fyers = sec.get("fyers", {})
-        if isinstance(fyers, dict):
-            APP_ID = fyers.get("APP_ID", APP_ID)
-            SECRET_KEY = fyers.get("SECRET_KEY", SECRET_KEY)
-            REDIRECT_URL = fyers.get("REDIRECT_URL", REDIRECT_URL)
+        fyers_sec = sec.get("fyers", {})
+        if isinstance(fyers_sec, dict):
+            APP_ID = fyers_sec.get("APP_ID", APP_ID)
+            SECRET_KEY = fyers_sec.get("SECRET_KEY", SECRET_KEY)
+            REDIRECT_URL = fyers_sec.get("REDIRECT_URL", REDIRECT_URL)
 except Exception:
     pass
 # ====================== END BULLETPROOF CONFIG ======================
@@ -75,6 +78,69 @@ from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stock
 st.set_page_config(page_title="CODE RED", layout="wide", page_icon="📊")
 inject_custom_css()
 ensure_data_files()
+
+# ====================== ULTRA VISIBLE CREDENTIAL DEBUG (NO EXPANDER, ALWAYS AT TOP - NO CLICK) ======================
+st.markdown("## 🔴 **CREDENTIAL STATUS (ALWAYS VISIBLE - NO CLICK / NO BOX)**")
+st.caption("This debug is shown unconditionally at the very top on every load. No expanders used.")
+
+# Display current loaded values (masked)
+app_id_clean = "PLACEHOLDER" if (not APP_ID or "YOUR" in str(APP_ID) or "PLACEHOLDER" in str(APP_ID)) else str(APP_ID)
+secret_clean = "PLACEHOLDER" if (not SECRET_KEY or "YOUR" in str(SECRET_KEY) or "PLACEHOLDER" in str(SECRET_KEY)) else str(SECRET_KEY)
+redirect_clean = "PLACEHOLDER" if (not REDIRECT_URL or "your-redirect" in str(REDIRECT_URL).lower() or "PLACEHOLDER" in str(REDIRECT_URL)) else str(REDIRECT_URL)
+
+app_id_display = app_id_clean if app_id_clean == "PLACEHOLDER" else (app_id_clean[:8] + "..." + app_id_clean[-4:] if len(app_id_clean) > 12 else app_id_clean)
+secret_display = f"{len(secret_clean)} characters" if secret_clean != "PLACEHOLDER" else "❌ NOT LOADED"
+redirect_display = redirect_clean if redirect_clean != "PLACEHOLDER" else "PLACEHOLDER"
+
+st.write(f"**APP_ID:** `{app_id_display}`")
+st.write(f"**SECRET_KEY:** `{secret_display}`")
+st.write(f"**REDIRECT_URL:** `{redirect_display}`")
+
+# Secrets keys diagnostic (never shows actual secret values)
+try:
+    if hasattr(st, "secrets") and st.secrets:
+        sec = st.secrets
+        top_keys = list(sec.keys()) if hasattr(sec, "keys") else []
+        fyers_keys = []
+        if "fyers" in sec:
+            fsec = sec.get("fyers", {})
+            if isinstance(fsec, dict):
+                fyers_keys = list(fsec.keys())
+            else:
+                fyers_keys = [f"(type: {type(fsec)})"]
+        st.caption(f"**Secrets diagnostic:** top-level keys = {top_keys} | [fyers] keys = {fyers_keys}")
+    else:
+        st.caption("**Secrets diagnostic:** st.secrets not available (likely local run without secrets.toml)")
+except Exception as e:
+    st.caption(f"**Secrets diagnostic error:** {str(e)}")
+
+if app_id_clean == "PLACEHOLDER" or secret_clean == "PLACEHOLDER":
+    st.error("**❌ REAL CREDENTIALS NOT LOADED FROM SECRETS** → This is causing 'invalid app id hash' (code -5)")
+    
+    st.markdown("**FIX (do EXACTLY these steps):**")
+    st.markdown("1. On your deployed app, click **Manage app** (bottom right)")
+    st.markdown("2. Go to **Settings → Secrets**")
+    st.markdown("3. **Delete everything** currently in the secrets box")
+    st.markdown("4. Paste **only** the following (replace placeholders with your **exact** FYERS values):")
+    
+    st.code("""[fyers]
+APP_ID = "ABCD1234-100"                     # ← Exact App ID from FYERS dashboard
+SECRET_KEY = "your-full-secret-key-here"    # ← Exact Secret Key from FYERS
+REDIRECT_URL = "https://your-app.streamlit.app"   # ← Must exactly match FYERS registered redirect""", language="toml")
+    
+    st.warning("5. Click **Save**")
+    st.warning("6. Click **Reboot app**")
+    st.info("7. Refresh this page (or use Force Refresh button below). Values above must change from PLACEHOLDER.")
+    st.markdown("**If still PLACEHOLDER after reboot:** check exact TOML format / section name `[fyers]` (case sensitive).")
+else:
+    st.success("✅ **REAL CREDENTIALS LOADED FROM SECRETS** (values shown masked above)")
+    st.info("Since credentials are loaded, the 'code -5' is likely because the actual APP_ID / SECRET_KEY values you entered do not match your FYERS app registration (common: copy-paste error, app not active, or redirect URL mismatch).")
+
+if st.button("🔄 Force Refresh Secrets / Rerun Page", key="force_creds_refresh_top"):
+    st.rerun()
+
+st.divider()
+# ====================== END ALWAYS VISIBLE CREDENTIAL DEBUG ======================
 
 # ====================== SESSION STATE ======================
 defaults = {
@@ -104,6 +170,7 @@ render_title("CODE RED", "Intraday + Next-Day Scanner", connected=st.session_sta
 if st.session_state.fyers is None:
     with st.container(border=True):
         st.markdown("### Connect to FYERS")
+        
         if fyersModel is None:
             st.error("fyers_apiv3 not installed. Add it in requirements.txt")
         else:
@@ -136,14 +203,59 @@ if st.session_state.fyers is None:
                     )
                     session.set_token(auth_code)
                     response = session.generate_token()
+                    
                     if response and isinstance(response, dict) and "access_token" in response:
                         token = response["access_token"]
                         st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
                         st.success("Login successful!")
                         st.rerun()
                     else:
-                        st.error("Token generation failed. Please check your auth_code.")
-                        st.write("Response received:", response)
+                        # Improved error handling for "invalid app id hash"
+                        if isinstance(response, dict):
+                            code = response.get("code")
+                            msg = response.get("message", "").lower()
+                            
+                            if "invalid app id hash" in msg or code == -5:
+                                st.error("❌ **Invalid App ID Hash (Code: -5)**")
+                                
+                                st.markdown("""
+                                ### 🔴 Common Causes & Fixes
+                                
+                                **1. Wrong Credentials**
+                                - APP_ID or SECRET_KEY is incorrect
+                                - You must use the **exact** values from FYERS dashboard
+                                
+                                **2. Credentials not set in Streamlit Cloud**
+                                - The values in `config.py` are just placeholders
+                                - You **must** set them in Streamlit Secrets
+                                
+                                **3. App not activated**
+                                - Make sure your app is "Active" in FYERS My API section
+                                
+                                **4. Redirect URL Mismatch**
+                                - The redirect URL in FYERS must exactly match what you use
+                                """)
+                                
+                                st.code("""
+# Go to Streamlit Cloud → Your App → Settings → Secrets
+# Paste this (replace with your real values):
+
+[fyers]
+APP_ID = "ABCD1234-100"           # ← Exact App ID from FYERS
+SECRET_KEY = "your-long-secret"   # ← Exact Secret Key
+REDIRECT_URL = "https://your-app.streamlit.app"
+""", language="toml")
+                                
+                                st.link_button("Open FYERS My API Dashboard", 
+                                               "https://myapi.fyers.in/", 
+                                               type="secondary")
+                            else:
+                                st.error(f"Token generation failed. Code: {code}")
+                                st.write("Response:", response)
+                        else:
+                            st.error("Token generation failed. Unexpected response.")
+                            st.write("Response:", response)
+                        
                 except Exception as e:
                     st.error(f"Login failed: {str(e)}")
 
