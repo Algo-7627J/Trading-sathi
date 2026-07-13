@@ -6,7 +6,60 @@ try:
 except:
     fyersModel = None
 
-from config import APP_ID, SECRET_KEY, REDIRECT_URL, TIMEFRAME_OPTIONS, SECTOR_TIMEFRAMES
+# ====================== BULLETPROOF CONFIG (NO MORE IMPORT ERROR) ======================
+# This block guarantees the variables ALWAYS exist.
+# Even if config.py is deleted or broken, the app will run.
+
+import os
+
+# === SAFE DEFAULTS (always defined) ===
+APP_ID = "YOUR_FYERS_APP_ID"
+SECRET_KEY = "YOUR_FYERS_SECRET_KEY"
+REDIRECT_URL = "https://your-redirect-url.com"
+
+TIMEFRAME_OPTIONS = {
+    "1m": "1m", "5m": "5m", "15m": "15m",
+    "1h": "60m", "1d": "1d", "1w": "1w", "1M": "1M"
+}
+SECTOR_TIMEFRAMES = {
+    "1D (Intraday)": "1d",
+    "1W": "1w",
+    "2W": "2w",
+    "1 Month": "1M"
+}
+
+# Try loading from config.py (optional - will not crash if missing)
+try:
+    from config import (
+        APP_ID as _a, SECRET_KEY as _s, REDIRECT_URL as _r,
+        TIMEFRAME_OPTIONS as _t, SECTOR_TIMEFRAMES as _se
+    )
+    if _a and "YOUR_FYERS" not in str(_a): APP_ID = _a
+    if _s and "YOUR_FYERS" not in str(_s): SECRET_KEY = _s
+    if _r and "your-redirect" not in str(_r).lower(): REDIRECT_URL = _r
+    if _t: TIMEFRAME_OPTIONS = _t
+    if _se: SECTOR_TIMEFRAMES = _se
+except Exception:
+    # Completely safe fallback - app continues normally
+    pass
+
+# Load from Streamlit Secrets (IMPORTANT for Cloud deployment)
+try:
+    import streamlit as st
+    if hasattr(st, "secrets"):
+        sec = st.secrets
+        if "APP_ID" in sec: APP_ID = sec["APP_ID"]
+        if "SECRET_KEY" in sec: SECRET_KEY = sec["SECRET_KEY"]
+        if "REDIRECT_URL" in sec: REDIRECT_URL = sec["REDIRECT_URL"]
+
+        fyers = sec.get("fyers", {})
+        if isinstance(fyers, dict):
+            APP_ID = fyers.get("APP_ID", APP_ID)
+            SECRET_KEY = fyers.get("SECRET_KEY", SECRET_KEY)
+            REDIRECT_URL = fyers.get("REDIRECT_URL", REDIRECT_URL)
+except Exception:
+    pass
+# ====================== END BULLETPROOF CONFIG ======================
 from services import build_universe
 from analysis import scan_universe
 from next_day import scan_next_day
@@ -99,10 +152,36 @@ else:
     try:
         with st.sidebar:
             st.markdown("**CODE RED**")
-            uni = build_universe()
+            
+            # ====================== UNIVERSE SETTINGS ======================
+            use_live = st.checkbox("🚀 Use Live NSE F&O", value=True, key="use_live_universe")
+            
+            if st.button("🔄 Refresh Universe", use_container_width=True):
+                st.session_state.force_refresh_universe = True
+            
+            uni = build_universe(use_live=use_live, force_refresh=st.session_state.get("force_refresh_universe", False))
+            
+            # Reset force refresh
+            if st.session_state.get("force_refresh_universe"):
+                st.session_state.force_refresh_universe = False
+            
+            # Show universe source
+            source = uni.get("source", "unknown")
+            count = uni.get("count", len(uni["stocks"]))
+            
+            if "live" in source.lower():
+                st.success(f"✅ Live NSE: {count} F&O stocks")
+            elif "cached" in source.lower():
+                st.info(f"📦 Cached Live: {count} stocks")
+            else:
+                st.warning(f"📋 Hardcoded: {count} stocks")
+            
+            st.caption(f"Source: {source}")
+            
             st.divider()
             render_watchlist_manager(uni["all"])
             st.divider()
+            
             if st.button("Logout", use_container_width=True):
                 st.session_state.fyers = None
                 st.rerun()
