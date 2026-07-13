@@ -1,937 +1,220 @@
+# ui_helpers.py
 import streamlit as st
 import pandas as pd
 
-try:
-    import altair as alt
-except Exception:
-    alt = None
-
-from sectors import add_sector_column, ordered_sectors
-from storage import load_watchlist, add_to_watchlist, remove_from_watchlist
-
-# ---------------------------------------------------------------------------
-# Palette - flat, restrained, professional (TradingView / Groww style).
-# Color is used ONLY to communicate gain/loss/direction, never decoration.
-# ---------------------------------------------------------------------------
-BG = "#0e1117"
-SURFACE = "#161a25"
-BORDER = "rgba(255,255,255,0.08)"
-TEXT = "#d1d4dc"
-TEXT_MUTED = "#787b86"
-GREEN = "#26a69a"
-RED = "#ef5350"
-BLUE = "#2962ff"
-AMBER = "#f0b90b"
-
-SIGNAL_COLORS = {
-    "STRONG BUY": GREEN,
-    "BUY": GREEN,
-    "HOLD": TEXT_MUTED,
-    "SELL": RED,
-    "STRONG SELL": RED,
-    "NO DATA": TEXT_MUTED,
-}
-
-NEXT_DAY_COLORS = {
-    "STRONG BULLISH": GREEN,
-    "BULLISH": GREEN,
-    "NEUTRAL": TEXT_MUTED,
-    "BEARISH": RED,
-    "STRONG BEARISH": RED,
-    "NO DATA": TEXT_MUTED,
-}
-
-# Lower number = higher priority = shown first.
-SIGNAL_PRIORITY = {
-    "STRONG BUY": 0,
-    "STRONG SELL": 0,
-    "BUY": 1,
-    "SELL": 1,
-    "HOLD": 2,
-    "NO DATA": 3,
-}
-
-
 def inject_custom_css():
-    st.markdown(
-        f"""
-        <style>
-        html, body, [class*="css"] {{ font-family: -apple-system, "Segoe UI", Roboto, Inter, sans-serif; }}
+    st.markdown("""
+    <style>
+    .stApp { background-color: #0f172a; color: #e2e8f0; }
+    .stButton > button { background-color: #1e2937; border: 1px solid #334155; color: white; }
+    .stButton > button:hover { background-color: #334155; border-color: #64748b; }
+    .metric-card { background: #1e2937; border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+    .bullish { background: #052e16; border: 1px solid #16a34a; }
+    .bearish { background: #450a0a; border: 1px solid #b91c1c; }
+    .sector-card { 
+        background: #1e2937; 
+        border-radius: 12px; 
+        padding: 14px; 
+        margin-bottom: 8px; 
+        border: 1px solid #475569;
+        cursor: pointer;
+    }
+    .sector-card:hover { border-color: #64748b; background: #334155; }
+    .stock-card {
+        background: #1e2937;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 8px;
+        border: 1px solid #334155;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-        .stApp {{ background: {BG}; color: {TEXT}; }}
-        .block-container {{ padding-top: 1.4rem; padding-bottom: 3rem; max-width: 1200px; }}
-
-        h1, h2, h3, h4 {{ color: {TEXT} !important; font-weight: 600 !important; letter-spacing: -0.01em; }}
-        p, span, label, div {{ color: {TEXT}; }}
-
-        /* ---------- Simple flat title block ---------- */
-        .ts-title-row {{ display: flex; align-items: baseline; gap: 10px; margin-bottom: 2px; }}
-        .ts-title-row h1 {{ font-size: 1.5rem !important; margin: 0 !important; }}
-        .ts-subtitle {{ color: {TEXT_MUTED}; font-size: 13px; margin-bottom: 18px; }}
-
-        .ts-status-dot {{
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 12.5px; color: {TEXT_MUTED}; font-weight: 500;
-        }}
-        .ts-status-dot .dot {{ width: 7px; height: 7px; border-radius: 50%; background: {GREEN}; }}
-
-        /* ---------- Section label (minimal, no box) ---------- */
-        .ts-section {{
-            font-size: 13px; font-weight: 600; text-transform: uppercase;
-            letter-spacing: 0.06em; color: {TEXT_MUTED};
-            margin: 28px 0 10px 0; padding-bottom: 8px;
-            border-bottom: 1px solid {BORDER};
-        }}
-
-        /* ---------- Stat row (flat, monochrome cards, colored numbers only) ---------- */
-        .ts-stat-row {{ display: flex; gap: 1px; background: {BORDER}; border: 1px solid {BORDER}; border-radius: 8px; overflow: hidden; margin-bottom: 16px; }}
-        .ts-stat {{ flex: 1; background: {SURFACE}; padding: 12px 16px; min-width: 100px; }}
-        .ts-stat-label {{ font-size: 11.5px; color: {TEXT_MUTED}; margin-bottom: 4px; }}
-        .ts-stat-value {{ font-size: 1.35rem; font-weight: 700; color: {TEXT}; }}
-
-        div[data-testid="stMetric"] {{ background: {SURFACE}; border: 1px solid {BORDER}; padding: 10px 14px; border-radius: 8px; }}
-        div[data-testid="stMetricLabel"] {{ color: {TEXT_MUTED} !important; }}
-
-        /* ---------- Plain bordered card (used sparingly: login, notices) ---------- */
-        .ts-card {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 8px; padding: 16px 18px; margin-bottom: 12px; }}
-        .ts-card-notice {{ border-left: 3px solid {AMBER}; }}
-
-        /* ---------- Signal text (no pills, just colored bold text like a P&L figure) ---------- */
-        .ts-signal {{ font-weight: 700; font-size: 13px; }}
-        .ts-signal-up {{ color: {GREEN}; }}
-        .ts-signal-down {{ color: {RED}; }}
-        .ts-signal-flat {{ color: {TEXT_MUTED}; }}
-
-        /* ---------- Sector tag - single muted style, not per-sector rainbow ---------- */
-        .ts-tag {{
-            display: inline-block; padding: 2px 9px; border-radius: 4px;
-            font-size: 11.5px; font-weight: 600; color: {TEXT_MUTED};
-            background: rgba(255,255,255,0.05); border: 1px solid {BORDER};
-            margin-bottom: 8px;
-        }}
-
-        /* ---------- Watchlist chip ---------- */
-        .ts-chip {{
-            display: inline-block; padding: 3px 10px; border-radius: 4px;
-            font-size: 11.5px; font-weight: 600; color: {TEXT};
-            background: rgba(255,255,255,0.06); margin: 2px 4px 2px 0;
-        }}
-
-        /* ---------- Tabs: simple underline, no gradient ---------- */
-        div[data-testid="stTabs"] button[data-baseweb="tab"] {{
-            font-weight: 600; font-size: 13.5px; color: {TEXT_MUTED}; padding: 8px 14px;
-        }}
-        div[data-testid="stTabs"] button[aria-selected="true"] {{
-            color: {TEXT} !important;
-            border-bottom: 2px solid {BLUE} !important;
-        }}
-        div[data-testid="stTabs"] {{ border-bottom: 1px solid {BORDER}; margin-bottom: 12px; }}
-
-        /* ---------- Buttons: flat, single accent ---------- */
-        div[data-testid="stButton"] button[kind="primary"] {{
-            background: {BLUE}; border: none; font-weight: 600; border-radius: 6px;
-        }}
-        div[data-testid="stButton"] button[kind="primary"]:hover {{ background: #1e4fd6; }}
-        div[data-testid="stButton"] button[kind="secondary"] {{
-            border: 1px solid {BORDER}; background: transparent; border-radius: 6px;
-        }}
-
-        /* ---------- Sidebar: flat, no gradient ---------- */
-        section[data-testid="stSidebar"] {{ background: {SURFACE}; border-right: 1px solid {BORDER}; }}
-        section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2,
-        section[data-testid="stSidebar"] h3, section[data-testid="stSidebar"] h4 {{ color: {TEXT} !important; }}
-
-        /* ---------- Alerts / expander / misc ---------- */
-        div[data-testid="stAlert"] {{ border-radius: 6px; }}
-        details {{ background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 8px !important; }}
-        summary {{ font-weight: 600 !important; font-size: 13.5px !important; }}
-
-        hr {{ border-color: {BORDER} !important; margin: 20px 0 !important; }}
-
-        div[data-testid="stDataFrame"] {{ border: 1px solid {BORDER}; border-radius: 8px; }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_title(title: str, subtitle: str, connected: bool = False):
-    """Flat title block - no gradient banner."""
-    st.markdown(f'<div class="ts-title-row"><h1>{title}</h1></div>', unsafe_allow_html=True)
-    status = ""
+def render_title(title, subtitle, connected=False):
+    st.markdown(f"""
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+        <div style="font-size:32px; font-weight:800;">{title}</div>
+        <div style="font-size:18px; color:#64748b;">{subtitle}</div>
+    </div>
+    """, unsafe_allow_html=True)
     if connected:
-        status = '<span class="ts-status-dot"><span class="dot"></span>Connected to FYERS</span>'
-    st.markdown(f'<div class="ts-subtitle">{subtitle}{"  ·  " + status if status else ""}</div>', unsafe_allow_html=True)
+        st.caption("🟢 Connected to FYERS")
 
+def section_label(text):
+    st.markdown(f"<h3 style='margin:12px 0 8px 0; color:#cbd5e1; font-size:18px;'>{text}</h3>", unsafe_allow_html=True)
 
-def section_label(title: str):
-    """Minimal uppercase section divider - no icon box, no gradient."""
-    st.markdown(f'<div class="ts-section">{title}</div>', unsafe_allow_html=True)
-
-
-def render_stat_row(items):
-    """
-    Flat single-row stat strip. items: list of dicts {label, value, color}
-    color is optional - only used for numbers that represent gain/loss counts.
-    """
-    cells = ""
-    for it in items:
-        color = it.get("color", TEXT)
-        cells += (
-            f'<div class="ts-stat">'
-            f'<div class="ts-stat-label">{it.get("label","")}</div>'
-            f'<div class="ts-stat-value" style="color:{color};">{it.get("value","")}</div>'
-            f"</div>"
-        )
-    st.markdown(f'<div class="ts-stat-row">{cells}</div>', unsafe_allow_html=True)
-
-
-def render_summary_cards(df: pd.DataFrame):
-    total = len(df) if df is not None else 0
-    buy = len(df[df["Signal"].isin(["BUY", "STRONG BUY"])]) if total else 0
-    sell = len(df[df["Signal"].isin(["SELL", "STRONG SELL"])]) if total else 0
-    strong_buy = len(df[df["Signal"] == "STRONG BUY"]) if total else 0
-    strong_sell = len(df[df["Signal"] == "STRONG SELL"]) if total else 0
-    render_stat_row([
-        {"label": "Scanned", "value": total},
-        {"label": "Buy", "value": buy, "color": GREEN},
-        {"label": "Sell", "value": sell, "color": RED},
-        {"label": "Strong Buy", "value": strong_buy, "color": GREEN},
-        {"label": "Strong Sell", "value": strong_sell, "color": RED},
-    ])
-
-
-def signal_text(signal: str) -> str:
-    """Plain colored bold text for a signal - no pill/badge, matches P&L-style display."""
-    s = str(signal)
-    if s.startswith("STRONG BUY") or s.startswith("BUY") or s.startswith("STRONG BULLISH") or s.startswith("BULLISH"):
-        cls = "ts-signal-up"
-    elif s.startswith("STRONG SELL") or s.startswith("SELL") or s.startswith("STRONG BEARISH") or s.startswith("BEARISH"):
-        cls = "ts-signal-down"
-    else:
-        cls = "ts-signal-flat"
-    return f'<span class="ts-signal {cls}">{s}</span>'
-
-
-# Backward-compat alias (used to be called signal_badge)
-signal_badge = signal_text
-
-
-def render_sector_tag(sector: str):
-    st.markdown(f'<span class="ts-tag">{sector}</span>', unsafe_allow_html=True)
-
-
-def sort_by_priority(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Sort so STRONG BUY / STRONG SELL rows always appear first, then BUY/SELL,
-    then HOLD/others - within each tier ranked by |Score| descending.
-    """
-    if df is None or df.empty or "Signal" not in df.columns:
-        return df
-    df = df.copy()
-    df["_priority"] = df["Signal"].map(SIGNAL_PRIORITY).fillna(9)
-    if "Score" in df.columns:
-        df["_abs_score"] = pd.to_numeric(df["Score"], errors="coerce").abs().fillna(-1)
-    else:
-        df["_abs_score"] = 0
-    df = df.sort_values(["_priority", "_abs_score"], ascending=[True, False])
-    return df.drop(columns=["_priority", "_abs_score"])
-
-
-def display_signal_table(df: pd.DataFrame, prioritize: bool = True):
-    if df is None or df.empty:
-        st.caption("No data to display.")
-        return
-    show_df = sort_by_priority(df) if prioritize else df
-    st.dataframe(show_df, use_container_width=True, hide_index=True)
-
-
-def _short_symbol(sym: str) -> str:
-    """Shorten a FYERS symbol like NSE:RELIANCE-EQ -> RELIANCE for chart labels."""
-    try:
-        s = sym.split(":")[-1]
-        s = s.replace("-EQ", "")
-        return s
-    except Exception:
-        return sym
-
-
-def _label_with_sector(row) -> str:
-    """Build a chart-axis label like 'RELIANCE - Energy & Oil/Gas' when sector is known."""
-    sym = _short_symbol(row.get("Symbol", ""))
-    sector = row.get("Sector")
-    if sector and str(sector).strip() and str(sector).lower() != "nan":
-        return f"{sym} · {sector}"
-    return sym
-
-
-def _dark_chart(chart):
-    """Apply a consistent flat dark theme to any Altair chart."""
-    return (
-        chart.configure_view(strokeWidth=0)
-        .configure_axis(
-            labelColor=TEXT_MUTED, titleColor=TEXT_MUTED, gridColor="rgba(255,255,255,0.06)",
-            domainColor=BORDER, labelFontSize=11.5, titleFontSize=11.5,
-        )
-        .configure_legend(labelColor=TEXT_MUTED, titleColor=TEXT_MUTED, labelFontSize=11.5)
-    )
-
-
-def render_signal_bar_chart(df: pd.DataFrame, title: str = "", height_per_row: int = 26):
-    """
-    Horizontal bar chart of symbols ranked by Score, colored green/red by
-    Signal direction only (flat, no gradient/rounded decoration).
-    """
-    if df is None or df.empty:
-        st.caption(f"No {title.lower()} in this scan." if title else "No data.")
-        return
-
-    if alt is None or "Score" not in df.columns:
-        display_signal_table(df)
-        return
-
-    chart_df = df.copy()
-    chart_df["Score"] = pd.to_numeric(chart_df["Score"], errors="coerce")
-    chart_df = chart_df.dropna(subset=["Score"])
-    if chart_df.empty:
-        display_signal_table(df)
-        return
-
-    chart_df["_label"] = chart_df.apply(_label_with_sector, axis=1)
-    chart_df = chart_df.sort_values("Score", key=lambda s: s.abs(), ascending=False)
-
-    n = len(chart_df)
-    chart_height = max(100, min(560, n * height_per_row))
-
-    color_scale = alt.Scale(domain=list(SIGNAL_COLORS.keys()), range=list(SIGNAL_COLORS.values()))
-
-    tooltip_fields = ["Symbol", "Signal", "Score"]
-    for extra in ("Sector", "Pattern", "Reason"):
-        if extra in chart_df.columns:
-            tooltip_fields.append(extra)
-
-    chart = (
-        alt.Chart(chart_df)
-        .mark_bar(size=14)
-        .encode(
-            x=alt.X("Score:Q", title="Score"),
-            y=alt.Y("_label:N", sort="-x", title=None),
-            color=alt.Color("Signal:N", scale=color_scale, legend=None),
-            tooltip=tooltip_fields,
-        )
-        .properties(height=chart_height)
-    )
-    chart = _dark_chart(chart)
-
-    if title:
-        st.markdown(f'<div style="font-size:13px;font-weight:600;color:{TEXT_MUTED};margin-bottom:4px;">{title}</div>', unsafe_allow_html=True)
-    st.altair_chart(chart, use_container_width=True)
-
+def render_stat_row(stats):
+    cols = st.columns(len(stats))
+    for i, stat in enumerate(stats):
+        with cols[i]:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div style="font-size:12px; color:#94a3b8;">{stat['label']}</div>
+                <div style="font-size:24px; font-weight:700; margin-top:4px;">{stat['value']}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 def render_watchlist_manager(all_symbols):
-    """Sidebar widget to add/remove symbols from a persistent watchlist."""
-    st.markdown('<div style="font-weight:600;font-size:13.5px;margin-bottom:8px;">Watchlist</div>', unsafe_allow_html=True)
-    current = load_watchlist()
-
-    add_choice = st.selectbox(
-        "Add symbol",
-        [""] + sorted(set(all_symbols) - set(current)),
-        key="watchlist_add_select",
-        label_visibility="collapsed",
-        placeholder="Add symbol...",
-    )
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Add", key="watchlist_add_btn", use_container_width=True) and add_choice:
-            add_to_watchlist(add_choice)
-            st.rerun()
-    with c2:
-        if current:
-            remove_choice = st.selectbox("Remove", [""] + current, key="watchlist_remove_select", label_visibility="collapsed")
-        else:
-            remove_choice = None
-
-    if current and st.button("Remove", key="watchlist_remove_btn", use_container_width=True) and remove_choice:
-        remove_from_watchlist(remove_choice)
-        st.rerun()
-
-    if current:
-        chips = "".join(f'<span class="ts-chip">{_short_symbol(s)}</span>' for s in current)
-        st.markdown(f'<div style="margin-top:8px;">{chips}</div>', unsafe_allow_html=True)
+    st.markdown("**Watchlist**")
+    watchlist = st.session_state.get("watchlist", [])
+    
+    if "watchlist" not in st.session_state:
+        st.session_state.watchlist = []
+    
+    col1, col2 = st.columns([3,1])
+    with col1:
+        new_sym = st.text_input("Add symbol", placeholder="e.g. RELIANCE", label_visibility="collapsed")
+    with col2:
+        if st.button("Add", use_container_width=True):
+            if new_sym and new_sym.upper() not in st.session_state.watchlist:
+                st.session_state.watchlist.append(new_sym.upper())
+                st.rerun()
+    
+    if watchlist:
+        st.caption("Current Watchlist:")
+        for i, sym in enumerate(watchlist):
+            c1, c2 = st.columns([4,1])
+            c1.write(sym)
+            if c2.button("✕", key=f"rm_{i}", use_container_width=True):
+                st.session_state.watchlist.remove(sym)
+                st.rerun()
     else:
-        st.caption("No symbols added yet.")
+        st.caption("No symbols in watchlist")
 
-    return current
-
-
-def render_watchlist_results(df: pd.DataFrame, watchlist: list):
-    if not watchlist:
-        return
-    section_label(f"Watchlist ({len(watchlist)})")
-    wl_df = df[df["Symbol"].isin(watchlist)]
-    if wl_df.empty:
-        st.caption("None of your watchlist symbols were included in this scan.")
-    else:
-        display_signal_table(wl_df)
-
-
-def _sector_tab_label(sector: str, sector_df: pd.DataFrame) -> str:
-    total = len(sector_df)
-    return f"{sector} ({total})"
-
-
-def render_sector_panel(sector_df: pd.DataFrame):
-    """Compact stats + strong signal bar charts + full table, for one sector or 'All'."""
-    render_summary_cards(sector_df)
-
-    strong_buy = sector_df[sector_df["Signal"] == "STRONG BUY"]
-    strong_sell = sector_df[sector_df["Signal"] == "STRONG SELL"]
-
-    if not strong_buy.empty or not strong_sell.empty:
-        c1, c2 = st.columns(2)
-        with c1:
-            render_signal_bar_chart(strong_buy, title=f"Strong Buy ({len(strong_buy)})")
-        with c2:
-            render_signal_bar_chart(strong_sell, title=f"Strong Sell ({len(strong_sell)})")
-
-    with st.expander(f"Full results ({len(sector_df)})", expanded=strong_buy.empty and strong_sell.empty):
-        display_signal_table(sector_df)
-
-
-def render_sector_tabs(df: pd.DataFrame):
-    """
-    Single tab bar: All / Buy / Sell / [sectors...]. Replaces multiple
-    stacked sections with one coherent navigation surface.
-    """
+def render_compact_table_view(df):
     if df is None or df.empty:
-        st.caption("No data to display.")
         return
+    display_cols = [c for c in ["Symbol", "Sector", "LTP", "Signal", "Score", "Pattern", "MTF Status", "Volume"] if c in df.columns]
+    st.dataframe(df[display_cols], use_container_width=True, hide_index=True, height=400)
 
-    df = add_sector_column(df)
-    sectors_present = df["Sector"].dropna().unique().tolist()
-    sectors = ordered_sectors(sectors_present)
-
-    buy_df = df[df["Signal"].isin(["BUY", "STRONG BUY"])]
-    sell_df = df[df["Signal"].isin(["SELL", "STRONG SELL"])]
-
-    tab_labels = ["All", f"Buy ({len(buy_df)})", f"Sell ({len(sell_df)})"]
-    tab_labels += [_sector_tab_label(s, df[df["Sector"] == s]) for s in sectors]
-    tabs = st.tabs(tab_labels)
-
-    with tabs[0]:
-        render_sector_panel(df)
-    with tabs[1]:
-        render_sector_panel(buy_df) if not buy_df.empty else st.caption("No buy signals.")
-    with tabs[2]:
-        render_sector_panel(sell_df) if not sell_df.empty else st.caption("No sell signals.")
-
-    for tab, sector in zip(tabs[3:], sectors):
-        with tab:
-            sector_df = df[df["Sector"] == sector]
-            render_sector_panel(sector_df)
-
-
-# ---------------------------------------------------------------------------
-# Next-Day Outlook rendering
-# ---------------------------------------------------------------------------
-
-def _next_day_color_group(outlook: str) -> str:
-    for key in NEXT_DAY_COLORS:
-        if outlook.startswith(key):
-            return key
-    return "NEUTRAL"
-
-
-def render_next_day_bar_chart(df: pd.DataFrame, title: str = "", height_per_row: int = 26):
-    """Flat horizontal bar chart for Next-Day Outlook; faded bars = low confidence."""
+def render_compact_cards_view(df):
     if df is None or df.empty:
-        st.caption(f"No {title.lower()} in this scan." if title else "No data.")
         return
-
-    if alt is None or "Score" not in df.columns:
-        display_signal_table(df, prioritize=False)
-        return
-
-    chart_df = df.copy()
-    chart_df["Score"] = pd.to_numeric(chart_df["Score"], errors="coerce")
-    chart_df = chart_df.dropna(subset=["Score"])
-    if chart_df.empty:
-        st.caption("No scoreable data.")
-        return
-
-    chart_df["_label"] = chart_df.apply(_label_with_sector, axis=1)
-    chart_df["_color_group"] = chart_df["Outlook"].astype(str).apply(_next_day_color_group)
-    chart_df["_opacity"] = chart_df["Confidence"].map({"HIGH": 1.0, "MEDIUM": 0.7, "LOW": 0.35}).fillna(0.5)
-    chart_df = chart_df.sort_values("Score", key=lambda s: s.abs(), ascending=False)
-
-    n = len(chart_df)
-    chart_height = max(100, min(560, n * height_per_row))
-
-    color_scale = alt.Scale(domain=list(NEXT_DAY_COLORS.keys()), range=list(NEXT_DAY_COLORS.values()))
-
-    tooltip_fields = ["Symbol", "Outlook", "Score", "Confidence"]
-    for extra in ("Backtest Sample", "Backtest Hit Rate %", "ADX", "RSI", "RS vs Nifty (5D)", "Sector"):
-        if extra in chart_df.columns:
-            tooltip_fields.append(extra)
-
-    chart = (
-        alt.Chart(chart_df)
-        .mark_bar(size=14)
-        .encode(
-            x=alt.X("Score:Q", title="Score"),
-            y=alt.Y("_label:N", sort="-x", title=None),
-            color=alt.Color("_color_group:N", scale=color_scale, legend=None),
-            opacity=alt.Opacity("_opacity:Q", legend=None, scale=alt.Scale(domain=[0.35, 1.0], range=[0.35, 1.0])),
-            tooltip=tooltip_fields,
-        )
-        .properties(height=chart_height)
-    )
-    chart = _dark_chart(chart)
-
-    if title:
-        st.markdown(f'<div style="font-size:13px;font-weight:600;color:{TEXT_MUTED};margin-bottom:4px;">{title}</div>', unsafe_allow_html=True)
-    st.altair_chart(chart, use_container_width=True)
-    st.caption("Faded bars = low confidence (small backtest sample or weak historical hit-rate).")
-
-
-def _next_day_summary_row(df: pd.DataFrame):
-    total = len(df) if df is not None else 0
-    strong_bull = len(df[df["Outlook"] == "STRONG BULLISH"]) if total else 0
-    strong_bear = len(df[df["Outlook"] == "STRONG BEARISH"]) if total else 0
-    high_conf = len(df[df["Confidence"] == "HIGH"]) if total else 0
-
-    render_stat_row([
-        {"label": "Analyzed", "value": total},
-        {"label": "Strong Bullish", "value": strong_bull, "color": GREEN},
-        {"label": "Strong Bearish", "value": strong_bear, "color": RED},
-        {"label": "High Confidence", "value": high_conf, "color": AMBER},
-    ])
-
-
-def _next_day_sorted_table(df: pd.DataFrame) -> pd.DataFrame:
-    if "Confidence" in df.columns:
-        show_df = df.copy()
-        show_df["_conf_rank"] = show_df["Confidence"].map({"HIGH": 0, "MEDIUM": 1, "LOW": 2}).fillna(3)
-        show_df["_abs_score"] = pd.to_numeric(show_df.get("Score"), errors="coerce").abs().fillna(-1)
-        show_df = show_df.sort_values(
-            ["_conf_rank", "_abs_score"], ascending=[True, False]
-        ).drop(columns=["_conf_rank", "_abs_score"])
-        return show_df
-    return df
-
-
-def render_next_day_panel(df: pd.DataFrame):
-    _next_day_summary_row(df)
-
-    strong_bull = df[df["Outlook"] == "STRONG BULLISH"]
-    strong_bear = df[df["Outlook"] == "STRONG BEARISH"]
-
-    if not strong_bull.empty or not strong_bear.empty:
-        b1, b2 = st.columns(2)
-        with b1:
-            render_next_day_bar_chart(strong_bull, title=f"Strong Bullish ({len(strong_bull)})")
-        with b2:
-            render_next_day_bar_chart(strong_bear, title=f"Strong Bearish ({len(strong_bear)})")
-
-    with st.expander(f"Full results ({len(df)})", expanded=strong_bull.empty and strong_bear.empty):
-        st.dataframe(_next_day_sorted_table(df), use_container_width=True, hide_index=True)
-
-
-# ---------------------------------------------------------------------------
-# Common Direction - cross-reference intraday scan vs next-day outlook
-# ---------------------------------------------------------------------------
-
-def _intraday_direction(signal: str) -> str:
-    s = str(signal)
-    if s in ("STRONG BUY", "BUY"):
-        return "UP"
-    if s in ("STRONG SELL", "SELL"):
-        return "DOWN"
-    return "NEUTRAL"
-
-
-def _next_day_direction(outlook: str) -> str:
-    s = str(outlook)
-    # Strip confidence-softened suffix e.g. "BULLISH (Low Confidence)"
-    base = s.split(" (")[0]
-    if base in ("STRONG BULLISH", "BULLISH"):
-        return "UP"
-    if base in ("STRONG BEARISH", "BEARISH"):
-        return "DOWN"
-    return "NEUTRAL"
-
-
-def build_common_direction(intraday_df: pd.DataFrame, next_day_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Merge the intraday scan and next-day outlook on Symbol, keeping only
-    rows where both point in the SAME direction (both UP or both DOWN).
-    Returns an empty DataFrame if either input is missing/empty.
-    """
-    if intraday_df is None or intraday_df.empty or next_day_df is None or next_day_df.empty:
-        return pd.DataFrame()
-
-    left = intraday_df.copy()
-    right = next_day_df.copy()
-
-    left["_dir_intraday"] = left["Signal"].apply(_intraday_direction)
-    right["_dir_nextday"] = right["Outlook"].apply(_next_day_direction)
-
-    left_cols = ["Symbol", "Signal", "Score", "_dir_intraday"]
-    if "Sector" in left.columns:
-        left_cols.append("Sector")
-    right_cols = ["Symbol", "Outlook", "Score", "Confidence", "_dir_nextday"]
-    if "Backtest Hit Rate %" in right.columns:
-        right_cols.append("Backtest Hit Rate %")
-    if "Backtest Sample" in right.columns:
-        right_cols.append("Backtest Sample")
-
-    merged = pd.merge(
-        left[left_cols], right[right_cols],
-        on="Symbol", how="inner", suffixes=(" (Intraday)", " (Next-Day)")
-    )
-
-    merged = merged[
-        (merged["_dir_intraday"] == merged["_dir_nextday"]) & (merged["_dir_intraday"] != "NEUTRAL")
-    ].copy()
-
-    if merged.empty:
-        return merged
-
-    merged["Direction"] = merged["_dir_intraday"].map({"UP": "BULLISH", "DOWN": "BEARISH"})
-    merged["Combined Strength"] = (
-        pd.to_numeric(merged["Score (Intraday)"], errors="coerce").abs().fillna(0)
-        + pd.to_numeric(merged["Score (Next-Day)"], errors="coerce").abs().fillna(0)
-    )
-    merged = merged.sort_values("Combined Strength", ascending=False)
-    merged = merged.drop(columns=["_dir_intraday", "_dir_nextday"])
-
-    ordered_cols = ["Symbol"]
-    if "Sector" in merged.columns:
-        ordered_cols.append("Sector")
-    ordered_cols += [
-        "Direction", "Signal", "Score (Intraday)", "Outlook", "Score (Next-Day)",
-        "Confidence", "Combined Strength",
-    ]
-    if "Backtest Hit Rate %" in merged.columns:
-        ordered_cols.append("Backtest Hit Rate %")
-    if "Backtest Sample" in merged.columns:
-        ordered_cols.append("Backtest Sample")
-    ordered_cols = [c for c in ordered_cols if c in merged.columns]
-    return merged[ordered_cols]
-
-
-def render_common_direction_bar_chart(df: pd.DataFrame, title: str = ""):
-    """Bar chart of combined-direction stocks ranked by Combined Strength."""
-    if df is None or df.empty:
-        st.caption(f"No {title.lower()} in this scan." if title else "No data.")
-        return
-    if alt is None:
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        return
-
-    chart_df = df.copy()
-    if "Sector" in chart_df.columns:
-        chart_df["_label"] = chart_df.apply(
-            lambda r: f"{_short_symbol(r['Symbol'])} · {r['Sector']}" if pd.notna(r.get("Sector")) else _short_symbol(r["Symbol"]),
-            axis=1,
-        )
-    else:
-        chart_df["_label"] = chart_df["Symbol"].apply(_short_symbol)
-
-    color_scale = alt.Scale(domain=["BULLISH", "BEARISH"], range=[GREEN, RED])
-    n = len(chart_df)
-    chart_height = max(100, min(560, n * 26))
-
-    tooltip_fields = ["Symbol", "Direction", "Signal", "Score (Intraday)", "Outlook", "Score (Next-Day)", "Confidence"]
-    tooltip_fields = [f for f in tooltip_fields if f in chart_df.columns]
-
-    chart = (
-        alt.Chart(chart_df)
-        .mark_bar(size=14)
-        .encode(
-            x=alt.X("Combined Strength:Q", title="Combined Strength"),
-            y=alt.Y("_label:N", sort="-x", title=None),
-            color=alt.Color("Direction:N", scale=color_scale, legend=None),
-            tooltip=tooltip_fields,
-        )
-        .properties(height=chart_height)
-    )
-    chart = _dark_chart(chart)
-
-    if title:
-        st.markdown(f'<div style="font-size:13px;font-weight:600;color:{TEXT_MUTED};margin-bottom:4px;">{title}</div>', unsafe_allow_html=True)
-    st.altair_chart(chart, use_container_width=True)
-
-
-def render_common_direction_results(intraday_df: pd.DataFrame, next_day_df: pd.DataFrame):
-    """
-    Cross-references the intraday scan and next-day outlook, surfacing only
-    stocks where both agree on direction (both bullish or both bearish).
-    """
-    if intraday_df is None or intraday_df.empty:
-        st.info("Run the Intraday / 2-Day Scanner first to enable this comparison.")
-        return
-    if next_day_df is None or next_day_df.empty:
-        st.info("Run the Next-Day Outlook scan first to enable this comparison.")
-        return
-
-    common = build_common_direction(intraday_df, next_day_df)
-
-    if common.empty:
-        st.caption("No symbols currently agree in direction between the two scans.")
-        return
-
-    bullish = common[common["Direction"] == "BULLISH"]
-    bearish = common[common["Direction"] == "BEARISH"]
-
-    render_stat_row([
-        {"label": "Symbols compared", "value": len(set(intraday_df["Symbol"]) & set(next_day_df["Symbol"]))},
-        {"label": "Agreeing", "value": len(common)},
-        {"label": "Bullish agreement", "value": len(bullish), "color": GREEN},
-        {"label": "Bearish agreement", "value": len(bearish), "color": RED},
-    ])
-
-    st.caption(
-        "Shows stocks where the Intraday/2-Day Scanner signal (BUY/SELL) and the "
-        "Next-Day Outlook (BULLISH/BEARISH) point in the same direction - "
-        "higher-conviction ideas backed by two independent methods."
-    )
-
-    c1, c2 = st.columns(2)
-    with c1:
-        render_common_direction_bar_chart(bullish, title=f"Bullish agreement ({len(bullish)})")
-    with c2:
-        render_common_direction_bar_chart(bearish, title=f"Bearish agreement ({len(bearish)})")
-
-    with st.expander(f"Full list ({len(common)})", expanded=bullish.empty and bearish.empty):
-        st.dataframe(common, use_container_width=True, hide_index=True)
-
-
-def render_next_day_results(df: pd.DataFrame):
-    """
-    Single tab bar: All / Bullish / Bearish / [sectors...] for Next-Day
-    Outlook results - mirrors the intraday scanner's simplified navigation.
-    """
-    if df is None or df.empty:
-        st.caption("No data to display.")
-        return
-
-    st.caption(
-        "Backtest Hit Rate % = how often this rule-set's call was historically correct "
-        "for this stock. Confidence is HIGH/MEDIUM only when sample size and hit-rate "
-        "both clear a minimum bar - otherwise it's LOW and the call is softened."
-    )
-
-    df = df.copy()
-    bullish_df = df[df["Outlook"].astype(str).str.startswith("BULLISH") | df["Outlook"].astype(str).str.startswith("STRONG BULLISH")]
-    bearish_df = df[df["Outlook"].astype(str).str.startswith("BEARISH") | df["Outlook"].astype(str).str.startswith("STRONG BEARISH")]
-
-    sectors = []
-    if "Sector" in df.columns:
-        sectors_present = df["Sector"].dropna().unique().tolist()
-        sectors = ordered_sectors(sectors_present)
-
-    tab_labels = ["All", f"Bullish ({len(bullish_df)})", f"Bearish ({len(bearish_df)})"]
-    tab_labels += [_sector_tab_label(s, df[df["Sector"] == s]) for s in sectors]
-    tabs = st.tabs(tab_labels)
-
-    with tabs[0]:
-        render_next_day_panel(df)
-    with tabs[1]:
-        render_next_day_panel(bullish_df) if not bullish_df.empty else st.caption("No bullish calls.")
-    with tabs[2]:
-        render_next_day_panel(bearish_df) if not bearish_df.empty else st.caption("No bearish calls.")
-
-    for tab, sector in zip(tabs[3:], sectors):
-        with tab:
-            sector_df = df[df["Sector"] == sector]
-            render_next_day_panel(sector_df)
-
-
-# =============================================================================
-# NEW: Clean & Compact Views (for easier interpretation - less congested)
-# =============================================================================
-
-def get_conviction(row) -> str:
-    """Public version of conviction calculator (used by both UI and filters)."""
-    return _get_conviction(row)
-
-
-def _get_conviction(row) -> str:
-    """Compute a simple conviction level from existing columns."""
-    mtf = str(row.get("MTF Status", "")).lower()
-    score = row.get("Score")
-    vol = row.get("VolumeScore") or 0
-
-    if pd.isna(score):
-        return "LOW"
-
-    score_val = float(score)
-
-    if mtf == "confirmed" and abs(score_val) >= 45:
-        return "HIGH"
-    elif mtf == "confirmed" or abs(score_val) >= 35:
-        return "MEDIUM"
-    else:
-        return "LOW"
-
-
-def _short_reason(reason: str, max_len: int = 65) -> str:
-    """Shorten the long Reason string for compact display."""
-    if not reason or pd.isna(reason):
-        return ""
-    r = str(reason).replace(" | ", " • ")
-    return r[:max_len] + "..." if len(r) > max_len else r
-
-
-def render_compact_table_view(df: pd.DataFrame, hide_charts: bool = True):
-    """Clean, scannable table view — much easier than dense bar charts."""
-    if df is None or df.empty:
-        st.caption("No data to display.")
-        return
-
-    # Prepare a clean dataframe with only useful columns
-    cols = ["Symbol", "Signal", "Score", "LTP", "MTF Status", "Pattern", "Pattern Confidence",
-            "VolumeScore", "OI Note", "News Sentiment", "Reason"]
-
-    clean_df = df.copy()
-
-    # Add Conviction column
-    clean_df["Conviction"] = clean_df.apply(_get_conviction, axis=1)
-
-    # Keep only columns that exist
-    available = [c for c in cols if c in clean_df.columns]
-    display_df = clean_df[available + (["Conviction"] if "Conviction" not in available else [])].copy()
-
-    # Reorder for readability
-    preferred_order = ["Symbol", "Signal", "Score", "Conviction", "LTP", "MTF Status",
-                       "Pattern", "Pattern Confidence", "VolumeScore", "OI Note",
-                       "News Sentiment", "Reason"]
-    final_cols = [c for c in preferred_order if c in display_df.columns]
-    display_df = display_df[final_cols]
-
-    # Shorten Reason
-    if "Reason" in display_df.columns:
-        display_df["Reason"] = display_df["Reason"].apply(_short_reason)
-
-    # Summary stats
-    render_summary_cards(df)
-
-    # Key insight banner
-    high_conf = len(display_df[display_df.get("Conviction", "") == "HIGH"])
-    st.caption(f"Showing **{len(display_df)}** signals • **{high_conf}** HIGH conviction • Sorted by strength")
-
-    # Legend for easier interpretation
-    with st.expander("📖 How to read this table (click to expand)", expanded=False):
-        st.markdown("""
-        - **Conviction** = Reliability of the signal
-          - **HIGH** → MTF Confirmed + strong score (best signals, less likely to reverse)
-          - **MEDIUM** → Decent confirmation
-          - **LOW** → Weak or conflicting (often reverses after 45-60 mins)
-        - **MTF Status** = Multi-timeframe agreement (Confirmed is strongest)
-        - Use **Only HIGH Conviction** filter + Top N to reduce noise
-        """)
-
-    # Nice dataframe with column config
-    column_config = {
-        "Signal": st.column_config.TextColumn(
-            "Signal",
-            help="Signal strength",
-        ),
-        "Score": st.column_config.NumberColumn("Score", format="%.1f", help="Overall score"),
-        "Conviction": st.column_config.TextColumn("Conviction", help="How reliable the signal looks"),
-        "LTP": st.column_config.NumberColumn("LTP", format="%.2f"),
-        "MTF Status": st.column_config.TextColumn("MTF"),
-        "VolumeScore": st.column_config.NumberColumn("Vol", format="%.1f"),
-    }
-
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config=column_config,
-    )
-
-    # Optional small bar chart only if user wants (default hidden)
-    if not hide_charts and alt is not None:
-        st.markdown("---")
-        st.caption("Score distribution (optional)")
-        render_signal_bar_chart(df.head(15), title="Top Signals by Score", height_per_row=22)
-
-
-def render_compact_cards_view(df: pd.DataFrame):
-    """Very clean card-based layout — great for quick scanning when bars feel congested."""
-    if df is None or df.empty:
-        st.caption("No data to display.")
-        return
-
-    render_summary_cards(df)
-
-    df = sort_by_priority(df).copy()
-    df["Conviction"] = df.apply(_get_conviction, axis=1)
-
-    # Create a responsive grid (3 columns looks good)
-    num_cols = 3
-    rows = [df.iloc[i:i+num_cols] for i in range(0, len(df), num_cols)]
-
-    for row_df in rows:
-        cols = st.columns(num_cols, gap="small")
-
-        for i, (_, row) in enumerate(row_df.iterrows()):
-            with cols[i]:
-                signal = str(row.get("Signal", "HOLD"))
-                score = row.get("Score")
-                conviction = row.get("Conviction", "LOW")
-                ltp = row.get("LTP")
-                mtf = row.get("MTF Status", "")
-                pattern = row.get("Pattern", "")
-                vol = row.get("VolumeScore")
-
-                # Choose colors
-                if "BUY" in signal or "BULL" in signal:
-                    sig_color = GREEN
-                    sig_icon = "🟢"
-                elif "SELL" in signal or "BEAR" in signal:
-                    sig_color = RED
-                    sig_icon = "🔴"
-                else:
-                    sig_color = TEXT_MUTED
-                    sig_icon = "⚪"
-
-                conv_color = GREEN if conviction == "HIGH" else (AMBER if conviction == "MEDIUM" else TEXT_MUTED)
-
-                # Card HTML
-                card_html = f"""
-                <div style="
-                    background: {SURFACE};
-                    border: 1px solid {BORDER};
-                    border-radius: 10px;
-                    padding: 12px 14px;
-                    margin-bottom: 8px;
-                    min-height: 118px;
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                ">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                        <div>
-                            <span style="font-size:15px; font-weight:700; color:{TEXT};">{row.get('Symbol','')}</span>
-                        </div>
-                        <div style="font-size:11px; color:{conv_color}; font-weight:600;">
-                            {conviction}
-                        </div>
-                    </div>
-
-                    <div style="margin-bottom:4px;">
-                        <span style="font-size:17px; font-weight:800; color:{sig_color};">{sig_icon} {signal}</span>
-                        <span style="margin-left:8px; font-size:13px; color:{TEXT_MUTED};">Score: <b>{score}</b></span>
-                    </div>
-
-                    <div style="font-size:12.5px; color:{TEXT_MUTED}; line-height:1.35;">
-                        LTP: <b style="color:{TEXT};">{ltp}</b> &nbsp;•&nbsp; MTF: <b>{mtf}</b><br>
-                        {f"Pattern: {pattern}" if pattern and pattern != "None" else ""}
-                        {f"<br>Vol: {vol}" if vol is not None else ""}
-                    </div>
+    for _, row in df.iterrows():
+        symbol = row.get("Symbol", "N/A")
+        score = float(row.get("Score", 0))
+        ltp = row.get("LTP", "N/A")
+        signal = str(row.get("Signal", ""))
+        pattern = row.get("Pattern", "N/A")
+        mtf = row.get("MTF Status", "N/A")
+        vol = row.get("Volume", "N/A")
+        sector = row.get("Sector", "N/A")
+        
+        is_bull = "Buy" in signal or "Bullish" in signal or score > 0
+        bg = "#052e16" if is_bull else "#450a0a"
+        border = "#16a34a" if is_bull else "#b91c1c"
+        txt = "#22c55e" if is_bull else "#ef4444"
+        
+        st.markdown(f"""
+        <div style="background:{bg}; border:1px solid {border}; border-radius:12px; padding:14px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-size:17px; font-weight:700; color:{txt};">{symbol}</span>
+                    <span style="margin-left:8px; font-size:12px; color:#94a3b8;">{sector}</span>
                 </div>
-                """
-                st.markdown(card_html, unsafe_allow_html=True)
+                <div style="font-weight:600; color:#e2e8f0;">₹{ltp}</div>
+            </div>
+            <div style="margin:6px 0; font-size:13px; color:#cbd5e1;">
+                <b>{signal}</b> • Score: {score:.1f}
+            </div>
+            <div style="font-size:12px; color:#94a3b8;">
+                {pattern} • MTF: {mtf} • Vol: {vol}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    st.caption("💡 Tip: Use the **Top Signals + Clean Table** mode for even faster scanning.")
+def render_next_day_results(df):
+    """Render next day results in card view (similar to intraday)"""
+    if df is None or df.empty:
+        st.info("No next-day outlook data available.")
+        return
+    
+    st.markdown("### 📅 Next-Day Outlook Cards")
+    
+    # Add a view mode option
+    view_mode = st.radio("View", ["Cards", "Table"], horizontal=True, key="nd_view_mode")
+    
+    if view_mode == "Table":
+        display_cols = [c for c in ["Symbol", "Sector", "Outlook", "Expected_Move", "Confidence", "Bias", "Key_Levels"] if c in df.columns]
+        st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+        return
+    
+    # Card view
+    for _, row in df.iterrows():
+        symbol = row.get("Symbol", "N/A")
+        outlook = str(row.get("Outlook", "Neutral"))
+        exp_move = row.get("Expected_Move", "N/A")
+        conf = row.get("Confidence", 0)
+        bias = str(row.get("Bias", "Neutral"))
+        sector = row.get("Sector", "N/A")
+        key_levels = row.get("Key_Levels", "N/A")
+        
+        is_bull = "Bullish" in outlook or "Buy" in outlook or bias == "Bullish"
+        bg = "#052e16" if is_bull else "#450a0a" if "Bearish" in outlook or bias == "Bearish" else "#1e2937"
+        border = "#16a34a" if is_bull else "#b91c1c" if "Bearish" in outlook or bias == "Bearish" else "#475569"
+        color = "#22c55e" if is_bull else "#ef4444" if "Bearish" in outlook else "#94a3b8"
+        
+        st.markdown(f"""
+        <div style="background:{bg}; border:1px solid {border}; border-radius:12px; padding:14px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-size:17px; font-weight:700; color:{color};">{symbol}</span>
+                    <span style="margin-left:8px; font-size:12px; color:#64748b;">{sector}</span>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:13px; color:#cbd5e1;">{outlook}</div>
+                    <div style="font-weight:600; color:#e2e8f0;">{exp_move}</div>
+                </div>
+            </div>
+            <div style="margin-top:8px; display:flex; gap:16px; font-size:13px;">
+                <div><span style="color:#94a3b8;">Confidence:</span> <b>{conf}%</b></div>
+                <div><span style="color:#94a3b8;">Bias:</span> <span style="color:{color};">{bias}</span></div>
+            </div>
+            <div style="margin-top:4px; font-size:12px; color:#64748b;">
+                {key_levels}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+def sort_by_priority(df):
+    if df is None or df.empty or "Score" not in df.columns:
+        return df
+    return df.sort_values("Score", ascending=False)
+
+def render_sector_card(sector, total, bullish, bearish, avg_score, is_bullish=True, key_prefix=""):
+    """Clickable sector card"""
+    pct = (bullish / total * 100) if total > 0 else 0
+    color = "#16a34a" if is_bullish else "#ef4444"
+    bg = "#052e16" if is_bullish else "#450a0a"
+    
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.markdown(f"""
+        <div style="background:{bg}; border:1px solid {color}; border-radius:10px; padding:12px 14px; margin-bottom:6px;">
+            <div style="display:flex; justify-content:space-between;">
+                <div>
+                    <span style="font-weight:700; font-size:15px; color:white;">{sector}</span>
+                    <span style="margin-left:8px; font-size:12px; color:#94a3b8;">{total} stocks</span>
+                </div>
+                <div style="text-align:right; font-size:13px;">
+                    <span style="color:{color};">{bullish if is_bullish else bearish}</span>
+                    <span style="color:#64748b;"> / {total}</span>
+                </div>
+            </div>
+            <div style="font-size:12px; margin-top:4px;">
+                Bullish: {bullish} ({pct:.0f}%) • Avg Score: {avg_score:.1f}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        if st.button("View Stocks", key=f"{key_prefix}_{sector}", use_container_width=True):
+            return sector
+    return None
+
+def load_watchlist():
+    if "watchlist" not in st.session_state:
+        st.session_state.watchlist = []
+    return st.session_state.watchlist
+
+# Add any other helpers as needed
