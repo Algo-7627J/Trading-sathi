@@ -44,6 +44,13 @@ except Exception:
 # 2. Load from Streamlit Secrets - FINAL ULTRA-ROBUST LOADER (catches all formats)
 _secrets_source = "defaults"
 
+def _clean_secret_url(v):
+    """'[https://x](https://x)' -> 'https://x' — people paste markdown links into secrets."""
+    v = str(v).strip()
+    if v.startswith("[") and "](" in v and v.endswith(")"):
+        return v.split("](", 1)[1][:-1]
+    return v
+
 def _load_from_secrets():
     global APP_ID, SECRET_KEY, REDIRECT_URL
     if not (hasattr(st, "secrets") and st.secrets):
@@ -52,13 +59,14 @@ def _load_from_secrets():
     sec = st.secrets
     source = "defaults"
 
-    # Case-insensitive, section-agnostic secret reader.
-    # Accepts [fyers] / [FYERS] / [Fyers], APP_ID / app_id / App_Id, flat keys, etc.
+    # Case-insensitive, section-agnostic, FYERS_-prefix-tolerant secret reader.
+    # Accepts [fyers]/[FYERS], APP_ID/app_id/FYERS_APP_ID etc.
     def get_val(key):
         kn = str(key).strip().upper().replace("-", "_")
 
         def norm(s):
-            return str(s).strip().upper().replace("-", "_")
+            s = str(s).strip().upper().replace("-", "_")
+            return s[6:] if s.startswith("FYERS_") else s
 
         # 1) search ALL sections (any name, any case)
         try:
@@ -106,6 +114,8 @@ def _load_from_secrets():
         source = src
 
     val, src = get_val("REDIRECT_URL")
+    if val:
+        val = _clean_secret_url(val)
     if val and "your-redirect" not in val.lower() and "PLACEHOLDER" not in val.upper():
         REDIRECT_URL = val
         source = src
