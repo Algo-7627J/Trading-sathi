@@ -3,7 +3,7 @@ import pandas as pd
 
 try:
     from fyers_apiv3 import fyersModel
-except:
+except Exception:
     fyersModel = None
 
 # ====================== BULLETPROOF CONFIG + SECRETS LOADING (FIXED FOR CLOUD) ======================
@@ -42,7 +42,6 @@ except Exception:
     pass
 
 # 2. Load from Streamlit Secrets - FINAL ULTRA-ROBUST LOADER (catches all formats)
-# We assign DIRECTLY to variables (no globals hack)
 _secrets_source = "defaults"
 
 def _load_from_secrets():
@@ -53,17 +52,15 @@ def _load_from_secrets():
     sec = st.secrets
     source = "defaults"
 
-    # Helper - tries many ways to read one key
     def get_val(key, section="fyers"):
-        # 1. [fyers] dot notation
         try:
             if hasattr(sec, section):
                 sub = getattr(sec, section)
                 if hasattr(sub, key) and getattr(sub, key):
                     return str(getattr(sub, key)).strip(), "[fyers].dot"
-        except: pass
+        except Exception:
+            pass
 
-        # 2. [fyers] dict
         try:
             if section in sec:
                 sub = sec[section]
@@ -71,33 +68,32 @@ def _load_from_secrets():
                     return str(sub[key]).strip(), "[fyers].dict"
                 if hasattr(sub, key) and getattr(sub, key):
                     return str(getattr(sub, key)).strip(), "[fyers].attr"
-        except: pass
+        except Exception:
+            pass
 
-        # 3. Flat keys at top level
         try:
             if key in sec and sec[key]:
                 return str(sec[key]).strip(), "flat"
-        except: pass
+        except Exception:
+            pass
         try:
             if hasattr(sec, key) and getattr(sec, key):
                 return str(getattr(sec, key)).strip(), "flat_attr"
-        except: pass
+        except Exception:
+            pass
 
         return None, None
 
-    # Load APP_ID
     val, src = get_val("APP_ID")
     if val and "YOUR" not in val.upper() and "PLACEHOLDER" not in val.upper():
         APP_ID = val
         source = src
 
-    # Load SECRET_KEY
     val, src = get_val("SECRET_KEY")
     if val and "YOUR" not in val.upper() and "PLACEHOLDER" not in val.upper():
         SECRET_KEY = val
         source = src
 
-    # Load REDIRECT_URL
     val, src = get_val("REDIRECT_URL")
     if val and "your-redirect" not in val.lower() and "PLACEHOLDER" not in val.upper():
         REDIRECT_URL = val
@@ -107,9 +103,10 @@ def _load_from_secrets():
 
 try:
     _secrets_source = _load_from_secrets()
-except Exception as e:
-    _secrets_source = f"error: {str(e)[:80]}"
+except Exception:
+    _secrets_source = "error"
 # ====================== END BULLETPROOF CONFIG ======================
+
 from services import build_universe
 from analysis import scan_universe
 from next_day import scan_next_day
@@ -118,129 +115,22 @@ from ui_helpers import (
     inject_custom_css, render_title, section_label, render_stat_row,
     render_watchlist_manager, render_next_day_results,
     sort_by_priority, render_compact_table_view, render_compact_cards_view,
-    render_sector_card
+    render_sector_card, render_bull_bear_sections, render_count_tile,
+    render_sector_stock_row, render_footer
 )
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
-st.set_page_config(page_title="CODE RED", layout="wide", page_icon="📊")
+st.set_page_config(page_title="Trading Sathi — CODE RED", layout="wide", page_icon="📈")
 inject_custom_css()
 ensure_data_files()
 
-# ====================== ULTRA VISIBLE CREDENTIAL DEBUG (NO EXPANDER - ALWAYS AT VERY TOP) ======================
-st.markdown("## 🔴 **CREDENTIAL STATUS (ALWAYS VISIBLE - NO CLICK REQUIRED)**")
-st.caption("This block appears on **every single page load** unconditionally. No box, no expander.")
 
-# Show loading source
-src = globals().get("_secrets_source", "defaults (no secrets detected)")
-st.write(f"**Loaded from:** `{src}`")
-st.caption("If this still says 'defaults' after correct secrets + reboot, the loading code needs to catch your format.")
+def _creds_missing():
+    """True when FYERS credentials are still placeholders."""
+    bad_id = (not APP_ID) or ("YOUR" in str(APP_ID).upper()) or len(str(APP_ID)) < 5
+    bad_secret = (not SECRET_KEY) or ("YOUR" in str(SECRET_KEY).upper()) or len(str(SECRET_KEY)) < 10
+    return bad_id or bad_secret
 
-# Masked display
-app_id_clean = "PLACEHOLDER" if (not APP_ID or "YOUR" in str(APP_ID).upper() or len(str(APP_ID)) < 5) else str(APP_ID).strip()
-secret_clean = "PLACEHOLDER" if (not SECRET_KEY or "YOUR" in str(SECRET_KEY).upper() or len(str(SECRET_KEY)) < 10) else str(SECRET_KEY).strip()
-redirect_clean = "PLACEHOLDER" if (not REDIRECT_URL or "your-redirect" in str(REDIRECT_URL).lower() or len(str(REDIRECT_URL)) < 10) else str(REDIRECT_URL).strip()
-
-app_id_display = app_id_clean if app_id_clean == "PLACEHOLDER" else (app_id_clean[:8] + "..." + app_id_clean[-4:] if len(app_id_clean) > 12 else app_id_clean)
-secret_display = f"{len(secret_clean)} characters" if secret_clean != "PLACEHOLDER" else "❌ NOT LOADED"
-redirect_display = redirect_clean if redirect_clean != "PLACEHOLDER" else "PLACEHOLDER"
-
-st.write(f"**APP_ID:** `{app_id_display}`")
-st.write(f"**SECRET_KEY:** `{secret_display}`")
-st.write(f"**REDIRECT_URL:** `{redirect_display}`")
-
-# === RAW SECRETS INSPECTION (EXTREMELY DETAILED - tells us exactly what Cloud is giving) ===
-st.markdown("**🔍 RAW SECRETS INSPECTION (copy this entire section and send me):**")
-try:
-    if hasattr(st, "secrets") and st.secrets:
-        sec = st.secrets
-        
-        # 1. Type and top keys
-        sec_type = str(type(sec))
-        try:
-            top_keys = list(sec.keys())
-        except:
-            top_keys = "cannot list keys"
-        st.write(f"• Type of st.secrets: `{sec_type}`")
-        st.write(f"• Top-level keys: `{top_keys}`")
-        
-        # 2. Check [fyers] in every possible way
-        fyers_found = False
-        fyers_keys = []
-        fyers_app_exists = False
-        
-        # way 1: dict
-        if "fyers" in sec:
-            fyers_found = True
-            f = sec["fyers"]
-            if isinstance(f, dict):
-                fyers_keys = list(f.keys())
-                fyers_app_exists = "APP_ID" in f and bool(f.get("APP_ID"))
-            else:
-                fyers_keys = [x for x in dir(f) if not x.startswith("_")]
-                fyers_app_exists = hasattr(f, "APP_ID") and bool(getattr(f, "APP_ID", None))
-        
-        # way 2: dot
-        if not fyers_found and hasattr(sec, "fyers"):
-            fyers_found = True
-            f = sec.fyers
-            fyers_keys = [x for x in dir(f) if not x.startswith("_")]
-            fyers_app_exists = hasattr(f, "APP_ID") and bool(getattr(f, "APP_ID", None))
-        
-        st.write(f"• [fyers] section found: **{fyers_found}**")
-        st.write(f"• Keys inside [fyers]: `{fyers_keys}`")
-        st.write(f"• APP_ID exists inside [fyers]: **{fyers_app_exists}**")
-        
-        # 3. Final direct read test
-        try:
-            direct = None
-            if "fyers" in sec:
-                f = sec["fyers"]
-                direct = f.get("APP_ID") if isinstance(f, dict) else getattr(f, "APP_ID", None)
-            elif hasattr(sec, "fyers"):
-                direct = getattr(sec.fyers, "APP_ID", None)
-            
-            if direct:
-                st.success(f"✅ SUCCESS: st.secrets can read APP_ID (length={len(str(direct))})")
-            else:
-                st.error("❌ st.secrets CANNOT read APP_ID even though section exists")
-        except Exception as de:
-            st.error(f"❌ Direct read test error: {str(de)[:70]}")
-    else:
-        st.error("❌ st.secrets object does NOT exist in this run")
-except Exception as e:
-    st.error(f"❌ RAW INSPECTION CRASHED: {str(e)[:100]}")
-
-# Status
-if app_id_clean == "PLACEHOLDER" or secret_clean == "PLACEHOLDER":
-    st.error("**❌ CREDENTIALS NOT LOADED FROM SECRETS** → This is 100% causing code -5")
-    
-    st.markdown("### Exact copy-paste you must use in Cloud Secrets (delete everything first):")
-    st.code("""[fyers]
-APP_ID = "ABCD1234-100"                     # ← Replace with your exact FYERS App ID
-SECRET_KEY = "your-full-secret-key-here"    # ← Replace with your exact FYERS Secret Key
-REDIRECT_URL = "https://your-app-name.streamlit.app"   # ← Replace with your exact app URL""", language="toml")
-    
-    st.warning("Steps (do in order):")
-    st.markdown("1. Deployed app → **Manage app** (bottom right)")
-    st.markdown("2. **Settings → Secrets**")
-    st.markdown("3. **Select all + Delete** everything in the box")
-    st.markdown("4. Paste the block above (with your real values)")
-    st.markdown("5. Click **Save**")
-    st.markdown("6. Click **Reboot app**")
-    st.info("After reboot → refresh page and **copy-paste here** exactly what the 3 lines (APP_ID, SECRET_KEY, REDIRECT_URL) show above.")
-else:
-    st.success("✅ **CREDENTIALS SUCCESSFULLY LOADED** from Streamlit Secrets")
-    st.markdown("If you **still** get code -5 even after this shows real values:")
-    st.markdown("- Double-check the exact values in FYERS My API (copy again)")
-    st.markdown("- Make sure Redirect URL in FYERS is **identical** to what you put above")
-    st.markdown("- Make sure the app is **Active** in FYERS dashboard")
-    st.markdown("- Generate a **new auth_code** (old one may be invalid)")
-
-if st.button("🔄 Force Refresh (click after Save + Reboot)", key="force_creds"):
-    st.rerun()
-
-st.divider()
-# ====================== END ALWAYS VISIBLE CREDENTIAL DEBUG ======================
 
 # ====================== SESSION STATE ======================
 defaults = {
@@ -264,34 +154,26 @@ for k, v in defaults.items():
 
 df = st.session_state.get("last_scan_df")
 
-render_title("CODE RED", "Intraday + Next-Day Scanner", connected=st.session_state.fyers is not None)
+render_title("CODE RED", "Trading Sathi — Intraday &amp; Next-Day Scanner", connected=st.session_state.fyers is not None)
 
 # ====================== LOGIN SECTION ======================
 if st.session_state.fyers is None:
-    with st.container(border=True):
-        st.markdown("### Connect to FYERS")
-        
-        if fyersModel is None:
-            st.error("fyers_apiv3 not installed. Add it in requirements.txt")
-        else:
-            try:
-                session = fyersModel.SessionModel(
-                    client_id=APP_ID,
-                    secret_key=SECRET_KEY,
-                    redirect_uri=REDIRECT_URL,
-                    response_type="code",
-                    grant_type="authorization_code"
-                )
-                login_url = session.generate_authcode()
-                st.link_button("Login to FYERS", login_url, type="primary")
-            except Exception as e:
-                st.error(f"Error generating login URL: {e}")
+    _sp1, _mid, _sp2 = st.columns([1, 1.6, 1])
+    with _mid:
+        with st.container(border=True):
+            st.markdown("### 🔐 Connect to FYERS")
+            st.caption("Login with your FYERS account to unlock live intraday & next-day scans.")
 
-        auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed", placeholder="Paste your auth_code...")
+            if _creds_missing():
+                st.warning("**FYERS API credentials not configured.** Add them in Streamlit Cloud Secrets, then reboot the app.")
+                st.code("""[fyers]
+APP_ID = "ABCD1234-100"
+SECRET_KEY = "your-full-secret-key"
+REDIRECT_URL = "https://your-app-name.streamlit.app\"""", language="toml")
+                st.caption("Manage app → Settings → Secrets → paste the block above → Save → **Reboot app**.")
 
-        if st.button("Generate Access Token", type="primary"):
-            if not auth_code:
-                st.error("Please paste the auth_code first.")
+            if fyersModel is None:
+                st.error("`fyers_apiv3` not installed. Add it to requirements.txt")
             else:
                 try:
                     session = fyersModel.SessionModel(
@@ -301,99 +183,81 @@ if st.session_state.fyers is None:
                         response_type="code",
                         grant_type="authorization_code"
                     )
-                    session.set_token(auth_code)
-                    response = session.generate_token()
-                    
-                    if response and isinstance(response, dict) and "access_token" in response:
-                        token = response["access_token"]
-                        st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
-                        st.success("Login successful!")
-                        st.rerun()
-                    else:
-                        # Improved error handling for "invalid app id hash"
-                        if isinstance(response, dict):
-                            code = response.get("code")
-                            msg = response.get("message", "").lower()
-                            
-                            if "invalid app id hash" in msg or code == -5:
-                                st.error("❌ **Invalid App ID Hash (Code: -5)**")
-                                
-                                st.markdown("""
-                                ### 🔴 Common Causes & Fixes
-                                
-                                **1. Wrong Credentials**
-                                - APP_ID or SECRET_KEY is incorrect
-                                - You must use the **exact** values from FYERS dashboard
-                                
-                                **2. Credentials not set in Streamlit Cloud**
-                                - The values in `config.py` are just placeholders
-                                - You **must** set them in Streamlit Secrets
-                                
-                                **3. App not activated**
-                                - Make sure your app is "Active" in FYERS My API section
-                                
-                                **4. Redirect URL Mismatch**
-                                - The redirect URL in FYERS must exactly match what you use
-                                """)
-                                
-                                st.code("""
-# Go to Streamlit Cloud → Your App → Settings → Secrets
-# Paste this (replace with your real values):
-
-[fyers]
-APP_ID = "ABCD1234-100"           # ← Exact App ID from FYERS
-SECRET_KEY = "your-long-secret"   # ← Exact Secret Key
-REDIRECT_URL = "https://your-app.streamlit.app"
-""", language="toml")
-                                
-                                st.link_button("Open FYERS My API Dashboard", 
-                                               "https://myapi.fyers.in/", 
-                                               type="secondary")
-                            else:
-                                st.error(f"Token generation failed. Code: {code}")
-                                st.write("Response:", response)
-                        else:
-                            st.error("Token generation failed. Unexpected response.")
-                            st.write("Response:", response)
-                        
+                    login_url = session.generate_authcode()
+                    st.link_button("🚀 Login to FYERS", login_url, type="primary", use_container_width=True)
                 except Exception as e:
-                    st.error(f"Login failed: {str(e)}")
+                    st.error(f"Error generating login URL: {e}")
+
+            auth_code = st.text_input("Paste auth_code here", label_visibility="collapsed", placeholder="Paste your auth_code…")
+
+            if st.button("Generate Access Token", type="primary", use_container_width=True):
+                if not auth_code:
+                    st.error("Please paste the auth_code first.")
+                else:
+                    try:
+                        session = fyersModel.SessionModel(
+                            client_id=APP_ID,
+                            secret_key=SECRET_KEY,
+                            redirect_uri=REDIRECT_URL,
+                            response_type="code",
+                            grant_type="authorization_code"
+                        )
+                        session.set_token(auth_code)
+                        response = session.generate_token()
+
+                        if response and isinstance(response, dict) and "access_token" in response:
+                            token = response["access_token"]
+                            st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
+                            st.success("Login successful!")
+                            st.rerun()
+                        else:
+                            if isinstance(response, dict):
+                                code = response.get("code")
+                                msg = response.get("message", "").lower()
+                                if "invalid app id hash" in msg or code == -5:
+                                    st.error("❌ **Invalid App ID Hash (Code: -5)** — check APP_ID / SECRET_KEY in Secrets, and confirm the Redirect URL exactly matches your FYERS app settings.")
+                                else:
+                                    st.error(f"Token generation failed. Code: {code}")
+                                    st.write("Response:", response)
+                            else:
+                                st.error("Token generation failed. Unexpected response.")
+                                st.write("Response:", response)
+                    except Exception as e:
+                        st.error(f"Login failed: {str(e)}")
 
 # ====================== MAIN APP ======================
 else:
     try:
         with st.sidebar:
-            st.markdown("**CODE RED**")
-            
+            st.markdown("### ⚙️ Settings")
+
             # ====================== UNIVERSE SETTINGS ======================
             use_live = st.checkbox("🚀 Use Live NSE F&O", value=True, key="use_live_universe")
-            
+
             if st.button("🔄 Refresh Universe", use_container_width=True):
                 st.session_state.force_refresh_universe = True
-            
+
             uni = build_universe(use_live=use_live, force_refresh=st.session_state.get("force_refresh_universe", False))
-            
-            # Reset force refresh
+
             if st.session_state.get("force_refresh_universe"):
                 st.session_state.force_refresh_universe = False
-            
-            # Show universe source
+
             source = uni.get("source", "unknown")
             count = uni.get("count", len(uni["stocks"]))
-            
+
             if "live" in source.lower():
                 st.success(f"✅ Live NSE: {count} F&O stocks")
             elif "cached" in source.lower():
                 st.info(f"📦 Cached Live: {count} stocks")
             else:
                 st.warning(f"📋 Hardcoded: {count} stocks")
-            
+
             st.caption(f"Source: {source}")
-            
+
             st.divider()
             render_watchlist_manager(uni["all"])
             st.divider()
-            
+
             if st.button("Logout", use_container_width=True):
                 st.session_state.fyers = None
                 st.rerun()
@@ -402,11 +266,11 @@ else:
             {"label": "F&O Stocks", "value": len(uni["stocks"])},
             {"label": "Index", "value": len(uni["indices"])},
             {"label": "Commodities", "value": len(uni["commodities"])},
-            {"label": "Total", "value": len(uni["all"])},
+            {"label": "Total Universe", "value": len(uni["all"])},
         ])
 
         watchlist = load_watchlist()
-        tab1, tab2, tab3 = st.tabs(["Intraday Scanner", "Next-Day Outlook", "Sector Trend"])
+        tab1, tab2, tab3 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend"])
 
         # ==================== TAB 1: INTRADAY ====================
         with tab1:
@@ -434,19 +298,19 @@ else:
             else:
                 chosen = uni["all"]
 
-            with st.expander("Edit Symbols"):
+            with st.expander("✏️ Edit Symbols"):
                 txt = st.text_area("Symbols", value="\n".join(chosen), height=160, label_visibility="collapsed")
             symbols = [s.strip() for s in txt.split("\n") if s.strip()]
             if limit > 0:
                 symbols = symbols[:limit]
 
-            if st.button("Run Scan", type="primary", use_container_width=True):
+            if st.button("⚡ Run Scan", type="primary", use_container_width=True):
                 st.session_state.run_scan = True
 
             if st.session_state.run_scan:
                 st.session_state.run_scan = False
                 if symbols:
-                    prog = st.progress(0.0, text="Scanning...")
+                    prog = st.progress(0.0, text="Scanning…")
                     result = scan_universe(
                         st.session_state.fyers,
                         symbols,
@@ -463,69 +327,49 @@ else:
 
             if df is not None and not df.empty:
                 df_sorted = add_sector_column(df)
-                section_label("Results")
+                section_label("📊 Scan Results")
 
-                strong_buy = df_sorted[df_sorted["Signal"].str.contains("Strong Buy|Buy", case=False, na=False)]
-                strong_sell = df_sorted[df_sorted["Signal"].str.contains("Strong Sell|Sell", case=False, na=False)]
+                strong_buy = df_sorted[df_sorted["Signal"].str.contains("Buy", case=False, na=False)]
+                strong_sell = df_sorted[df_sorted["Signal"].str.contains("Sell", case=False, na=False)]
+                neutral = df_sorted[~df_sorted["Signal"].str.contains("Buy|Sell", case=False, na=False)]
 
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown(f"""
-                    <div style="background:#052e16; border:1px solid #16a34a; padding:20px; border-radius:14px; text-align:center; color:white;">
-                        <div style="font-size:15px;">🟢 STRONG BUY</div>
-                        <div style="font-size:42px; font-weight:800;">{len(strong_buy)}</div>
-                    </div>""", unsafe_allow_html=True)
-                    if st.button("View Strong Buy", key="view_buy", use_container_width=True):
+                t1, t2, t3c = st.columns(3)
+                with t1:
+                    render_count_tile("BULLISH SIGNALS", len(strong_buy), "green", "🟢")
+                    if st.button("View List ▸", key="view_buy", use_container_width=True):
                         st.session_state.show_strong_buy = True
                         st.session_state.show_strong_sell = False
-
-                with c2:
-                    st.markdown(f"""
-                    <div style="background:#450a0a; border:1px solid #b91c1c; padding:20px; border-radius:14px; text-align:center; color:white;">
-                        <div style="font-size:15px;">🔴 STRONG SELL</div>
-                        <div style="font-size:42px; font-weight:800;">{len(strong_sell)}</div>
-                    </div>""", unsafe_allow_html=True)
-                    if st.button("View Strong Sell", key="view_sell", use_container_width=True):
+                with t2:
+                    render_count_tile("BEARISH SIGNALS", len(strong_sell), "red", "🔴")
+                    if st.button("View List ▸", key="view_sell", use_container_width=True):
                         st.session_state.show_strong_sell = True
                         st.session_state.show_strong_buy = False
+                with t3c:
+                    render_count_tile("NEUTRAL", len(neutral), "gray", "⚪")
 
                 if st.session_state.show_strong_buy or st.session_state.show_strong_sell:
                     selected = strong_buy if st.session_state.show_strong_buy else strong_sell
-                    st.markdown(f"### {'🟢 Strong Buy' if st.session_state.show_strong_buy else '🔴 Strong Sell'}")
-                    for _, row in selected.iterrows():
-                        score = float(row.get("Score", 0))
-                        is_buy = score > 0
-                        bg = "#052e16" if is_buy else "#450a0a"
-                        border = "#16a34a" if is_buy else "#b91c1c"
-                        txt_color = "#22c55e" if is_buy else "#ef4444"
-                        st.markdown(f"""
-                            <div style="background:{bg}; border:1px solid {border}; border-radius:12px; padding:16px; margin-bottom:10px;">
-                                <div style="display:flex; justify-content:space-between;">
-                                    <div>
-                                        <span style="font-size:18px; font-weight:800; color:{txt_color};">{row.get('Symbol')}</span>
-                                        <span style="margin-left:10px; color:#9ca3af;">Score: <b>{score:.1f}</b></span>
-                                    </div>
-                                    <div style="font-weight:600;">₹{row.get('LTP')}</div>
-                                </div>
-                                <div style="margin-top:6px; font-size:13px; color:#9ca3af;">
-                                    {row.get('Pattern', 'N/A')} • MTF: {row.get('MTF Status', 'N/A')} • Vol: {row.get('Volume', 'N/A')}
-                                </div>
-                            </div>""", unsafe_allow_html=True)
-
-                    if st.button("← Back", use_container_width=True):
+                    head = "🟢 All Bullish Signals" if st.session_state.show_strong_buy else "🔴 All Bearish Signals"
+                    section_label(head)
+                    render_compact_cards_view(selected)
+                    if st.button("← Back to Overview", use_container_width=True):
                         st.session_state.show_strong_buy = False
                         st.session_state.show_strong_sell = False
                         st.rerun()
-
                 else:
-                    view = st.radio("View Mode", ["Table", "Cards"], horizontal=True, key="intraday_view")
+                    # ===== 🟢 MOST BULLISH / 🔴 MOST BEARISH (CARD VIEW) =====
+                    render_bull_bear_sections(df_sorted, top_n=6, key_prefix="id")
+
+                    st.divider()
+                    section_label("All Results")
+                    view = st.radio("View Mode", ["Table", "Cards"], horizontal=True, key="intraday_view", label_visibility="collapsed")
                     if view == "Table":
                         render_compact_table_view(df_sorted)
                     else:
                         render_compact_cards_view(df_sorted)
 
                     st.download_button(
-                        "Download CSV",
+                        "⬇️ Download CSV",
                         df_sorted.to_csv(index=False).encode(),
                         "intraday_results.csv",
                         "text/csv"
@@ -534,12 +378,15 @@ else:
         # ==================== TAB 2: NEXT-DAY OUTLOOK ====================
         with tab2:
             section_label("Next-Day Outlook Settings")
-            nd_scope = st.selectbox(
-                "Universe",
-                ["Everything", "Only F&O Stocks", "Only Index", "Only Commodities", "Only Watchlist"],
-                key="nd_scope"
-            )
-            nd_limit = st.number_input("Max symbols (0 = All)", min_value=0, value=0, step=5, key="nd_limit")
+            nd1, nd2 = st.columns([2, 1])
+            with nd1:
+                nd_scope = st.selectbox(
+                    "Universe",
+                    ["Everything", "Only F&O Stocks", "Only Index", "Only Commodities", "Only Watchlist"],
+                    key="nd_scope"
+                )
+            with nd2:
+                nd_limit = st.number_input("Max symbols (0 = All)", min_value=0, value=0, step=5, key="nd_limit")
 
             if nd_scope == "Only F&O Stocks":
                 nd_chosen = uni["stocks"]
@@ -552,7 +399,7 @@ else:
             else:
                 nd_chosen = uni["all"]
 
-            with st.expander("Edit Symbols"):
+            with st.expander("✏️ Edit Symbols"):
                 nd_txt = st.text_area(
                     "Symbols",
                     value="\n".join(nd_chosen),
@@ -564,13 +411,13 @@ else:
             if nd_limit > 0:
                 nd_symbols = nd_symbols[:nd_limit]
 
-            if st.button("Run Next-Day Analysis", type="primary", use_container_width=True, key="run_next_day"):
+            if st.button("📅 Run Next-Day Analysis", type="primary", use_container_width=True, key="run_next_day"):
                 st.session_state.run_next_day_scan = True
 
             if st.session_state.run_next_day_scan:
                 st.session_state.run_next_day_scan = False
                 if nd_symbols:
-                    prog = st.progress(0.0, text="Analyzing next-day outlook...")
+                    prog = st.progress(0.0, text="Analyzing next-day outlook…")
                     nd_result = scan_next_day(st.session_state.fyers, nd_symbols, progress=prog)
                     prog.empty()
                     st.session_state.next_day_df = nd_result
@@ -578,10 +425,29 @@ else:
             nd_df = st.session_state.get("next_day_df")
             if nd_df is not None and not nd_df.empty:
                 nd_df = add_sector_column(nd_df)
-                section_label("Next-Day Results")
+                section_label("📅 Next-Day Results")
+
+                bias_col = "Bias" if "Bias" in nd_df.columns else "Outlook"
+                nd_bull = nd_df[nd_df[bias_col].astype(str).str.contains("Bullish", case=False, na=False)]
+                nd_bear = nd_df[nd_df[bias_col].astype(str).str.contains("Bearish", case=False, na=False)]
+                nd_neu = nd_df[~nd_df[bias_col].astype(str).str.contains("Bullish|Bearish", case=False, na=False)]
+
+                n1, n2, n3 = st.columns(3)
+                with n1:
+                    render_count_tile("BULLISH TOMORROW", len(nd_bull), "green", "🟢")
+                with n2:
+                    render_count_tile("BEARISH TOMORROW", len(nd_bear), "red", "🔴")
+                with n3:
+                    render_count_tile("NEUTRAL", len(nd_neu), "gray", "⚪")
+
+                # ===== 🟢 MOST BULLISH / 🔴 MOST BEARISH (CARD VIEW) =====
+                render_bull_bear_sections(nd_df, top_n=6, key_prefix="nd")
+
+                st.divider()
+                section_label("All Next-Day Results")
                 render_next_day_results(nd_df)
                 st.download_button(
-                    "Download Next-Day CSV",
+                    "⬇️ Download Next-Day CSV",
                     nd_df.to_csv(index=False).encode(),
                     "next_day_results.csv",
                     "text/csv"
@@ -593,7 +459,6 @@ else:
         with tab3:
             section_label("Sector Trend Analysis")
 
-            # Timeframe selector
             col_tf, col_info = st.columns([1, 2])
             with col_tf:
                 selected_tf = st.selectbox(
@@ -607,7 +472,6 @@ else:
             with col_info:
                 st.caption("📌 Timeframes affect how sector performance is calculated (simulated bias based on historical patterns).")
 
-            # Explanation
             with st.expander("📖 How are Most Bullish / Most Bearish Sectors calculated?"):
                 st.markdown("""
                 **Logic used:**
@@ -620,25 +484,20 @@ else:
                 - Data source: Latest Intraday scan (run Tab 1 first). Timeframe selection adjusts the weights.
                 """)
 
-            # Get base intraday data
             base_df = st.session_state.get("last_scan_df")
             if base_df is None or base_df.empty:
                 st.info("⚠️ Please run an **Intraday Scan** (Tab 1) first to see Sector Trend analysis.")
             else:
                 base_df = add_sector_column(base_df)
 
-                # Get timeframe-adjusted sector stats
                 tf_key = SECTOR_TIMEFRAMES.get(selected_tf, "1d")
                 sector_data = get_sector_timeframe_stats(base_df, timeframe=tf_key)
 
                 if sector_data.empty:
                     st.warning("No sector data available.")
                 else:
-                    # Most Bullish Sectors (as clickable cards)
-                    st.markdown(f"### 🟢 Most Bullish Sectors <small style='color:#64748b'>({selected_tf})</small>", unsafe_allow_html=True)
-
+                    st.markdown(f"#### 🟢 Most Bullish Sectors <small style='color:#7C7E8C'>({selected_tf})</small>", unsafe_allow_html=True)
                     bullish_sectors = sector_data.sort_values("Bullish %", ascending=False).head(6)
-
                     col_bull = st.columns(2)
                     for idx, (_, row) in enumerate(bullish_sectors.iterrows()):
                         with col_bull[idx % 2]:
@@ -647,11 +506,8 @@ else:
                                 st.session_state.selected_bullish_sector = sector_name
                                 st.session_state.selected_bearish_sector = None
 
-                    # Most Bearish Sectors
-                    st.markdown(f"### 🔴 Most Bearish Sectors <small style='color:#64748b'>({selected_tf})</small>", unsafe_allow_html=True)
-
+                    st.markdown(f"#### 🔴 Most Bearish Sectors <small style='color:#7C7E8C'>({selected_tf})</small>", unsafe_allow_html=True)
                     bearish_sectors = sector_data.sort_values("Bearish %", ascending=False).head(6)
-
                     col_bear = st.columns(2)
                     for idx, (_, row) in enumerate(bearish_sectors.iterrows()):
                         with col_bear[idx % 2]:
@@ -660,9 +516,8 @@ else:
                                 st.session_state.selected_bearish_sector = sector_name
                                 st.session_state.selected_bullish_sector = None
 
-                    # Show Top 10 stocks when a sector is clicked
                     if st.session_state.selected_bullish_sector:
-                        st.markdown(f"### 🟢 Top 10 Most Bullish Stocks in **{st.session_state.selected_bullish_sector}** ({selected_tf})")
+                        st.markdown(f"#### 🟢 Top 10 Most Bullish Stocks in **{st.session_state.selected_bullish_sector}** ({selected_tf})")
                         top_bull = get_top_stocks_by_sector(
                             base_df,
                             st.session_state.selected_bullish_sector,
@@ -671,16 +526,10 @@ else:
                         )
                         if not top_bull.empty:
                             for _, row in top_bull.iterrows():
-                                score = float(row.get("Score", 0))
-                                st.markdown(f"""
-                                <div style="background:#052e16; border:1px solid #16a34a; border-radius:10px; padding:11px 14px; margin-bottom:6px; display:flex; justify-content:space-between;">
-                                    <div>
-                                        <span style="font-weight:700; color:#22c55e;">{row['Symbol']}</span>
-                                        <span style="margin-left:10px; font-size:13px;">Score: {score:.1f}</span>
-                                    </div>
-                                    <div style="font-weight:600;">₹{row.get('LTP', 'N/A')} • {row.get('Signal', '')}</div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                st.markdown(
+                                    render_sector_stock_row(row["Symbol"], row.get("Score", 0), row.get("LTP", "N/A"), row.get("Signal", ""), True),
+                                    unsafe_allow_html=True
+                                )
                         else:
                             st.caption("No bullish stocks found in this sector for the current scan.")
 
@@ -689,7 +538,7 @@ else:
                             st.rerun()
 
                     if st.session_state.selected_bearish_sector:
-                        st.markdown(f"### 🔴 Top 10 Most Bearish Stocks in **{st.session_state.selected_bearish_sector}** ({selected_tf})")
+                        st.markdown(f"#### 🔴 Top 10 Most Bearish Stocks in **{st.session_state.selected_bearish_sector}** ({selected_tf})")
                         top_bear = get_top_stocks_by_sector(
                             base_df,
                             st.session_state.selected_bearish_sector,
@@ -698,16 +547,10 @@ else:
                         )
                         if not top_bear.empty:
                             for _, row in top_bear.iterrows():
-                                score = float(row.get("Score", 0))
-                                st.markdown(f"""
-                                <div style="background:#450a0a; border:1px solid #b91c1c; border-radius:10px; padding:11px 14px; margin-bottom:6px; display:flex; justify-content:space-between;">
-                                    <div>
-                                        <span style="font-weight:700; color:#ef4444;">{row['Symbol']}</span>
-                                        <span style="margin-left:10px; font-size:13px;">Score: {score:.1f}</span>
-                                    </div>
-                                    <div style="font-weight:600;">₹{row.get('LTP', 'N/A')} • {row.get('Signal', '')}</div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                st.markdown(
+                                    render_sector_stock_row(row["Symbol"], row.get("Score", 0), row.get("LTP", "N/A"), row.get("Signal", ""), False),
+                                    unsafe_allow_html=True
+                                )
                         else:
                             st.caption("No bearish stocks found in this sector for the current scan.")
 
@@ -715,7 +558,6 @@ else:
                             st.session_state.selected_bearish_sector = None
                             st.rerun()
 
-                    # Summary table
                     st.divider()
                     st.markdown(f"#### 📊 Sector Summary ({selected_tf})")
                     st.dataframe(
@@ -727,3 +569,5 @@ else:
     except Exception as e:
         st.error(f"App Error: {e}")
         st.exception(e)
+
+render_footer()
