@@ -210,6 +210,53 @@ if st.session_state.fyers is None:
                     except Exception as e:
                         st.error(f"Login failed: {str(e)}")
 
+        # ---- hidden diagnostics (only when user needs help) ----
+        with st.expander("🛠️ Login not working? → Diagnostics & Fix"):
+            def _loaded(val, min_len):
+                v = str(val or "")
+                return len(v) >= min_len and "YOUR" not in v.upper() and "PLACEHOLDER" not in v.upper() and "your-redirect" not in v.lower()
+
+            id_ok = _loaded(APP_ID, 5)
+            sk_ok = _loaded(SECRET_KEY, 10)
+            ru_ok = _loaded(REDIRECT_URL, 10)
+
+            _aid = (str(APP_ID)[:4] + "…" + str(APP_ID)[-4:]) if id_ok else "❌ NOT LOADED"
+            _sk = f"✅ Loaded ({len(str(SECRET_KEY))} chars)" if sk_ok else "❌ NOT LOADED"
+            _ru = REDIRECT_URL if ru_ok else "❌ NOT LOADED"
+
+            st.markdown("**What the app currently sees:**")
+            st.write(f"1️⃣ APP_ID → `{_aid}`")
+            st.write(f"2️⃣ SECRET_KEY → {_sk}")
+            st.write(f"3️⃣ REDIRECT_URL → `{_ru}`")
+            st.divider()
+
+            if not (id_ok and sk_ok and ru_ok):
+                st.error("Secrets are NOT being read. Almost always one of these:")
+                st.markdown("""
+                **A) App was not rebooted after saving Secrets** → Manage app → **⋮ (top-right) → Reboot app**
+                **B) TOML format issue** — in Manage app → Settings → **Secrets**, paste EXACTLY this (with your real values):
+                """)
+                st.code("""[fyers]
+APP_ID = "ABCD1234-100"
+SECRET_KEY = "xxxxxx"
+REDIRECT_URL = "https://trading-sathi-o6qgdjpsf6rcfuapptyzzt4.streamlit.app\"""", language="toml")
+                st.markdown("""
+                - Keys must be **UPPERCASE** exactly: `APP_ID`, `SECRET_KEY`, `REDIRECT_URL`
+                - Values in **normal double quotes** `" "` — not smart quotes `“ ”` (typing straight in the box is safe)
+                - First line must be exactly `[fyers]`
+                - No spaces inside the App ID / Secret Key
+                **C) REDIRECT_URL must match your FYERS app settings letter-for-letter** (myapi.fyers.in → your app → Redirect URL)
+                """)
+            else:
+                st.success("✅ All 3 secrets loaded correctly!")
+                st.markdown("""
+                If login STILL fails with **-5**, the values themselves are wrong:
+                - Re-copy **App ID** & **Secret Key** from [myapi.fyers.in](https://myapi.fyers.in/) (check for extra spaces)
+                - Confirm the FYERS app **Status = Active**
+                - Confirm **Redirect URL** in FYERS = the one shown in line 3️⃣ above
+                - Use a **fresh auth_code** (Login → paste → Generate immediately; codes die in seconds)
+                """)
+
 # ====================== MAIN APP ======================
 else:
     try:
