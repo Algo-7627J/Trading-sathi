@@ -128,16 +128,18 @@ except Exception:
     _secrets_source = "error"
 # ====================== END BULLETPROOF CONFIG ======================
 
+import time as _time
 from services import build_universe
 from analysis import scan_universe
 from next_day import scan_next_day
+from commodities import get_metal_report
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
     inject_custom_css, render_title, section_label, render_stat_row,
     render_watchlist_manager, render_next_day_results,
     sort_by_priority, render_compact_table_view, render_compact_cards_view,
     render_sector_card, render_bull_bear_sections, render_count_tile,
-    render_sector_stock_row, render_footer
+    render_sector_stock_row, render_footer, render_commodity_panel
 )
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
@@ -323,7 +325,7 @@ else:
         ])
 
         watchlist = load_watchlist()
-        tab1, tab2, tab3 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend"])
+        tab1, tab2, tab3, tab4 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend", "🥇 Gold & Silver"])
 
         # ==================== TAB 1: INTRADAY ====================
         with tab1:
@@ -618,6 +620,38 @@ else:
                         use_container_width=True,
                         hide_index=True
                     )
+
+        # ==================== TAB 4: GOLD & SILVER ====================
+        with tab4:
+            section_label("🥇 Gold & Silver — Multi-Timeframe Forecast")
+
+            cbtn, cinfo = st.columns([1, 3])
+            with cbtn:
+                if st.button("🔄 Refresh Data", key="metal_refresh", use_container_width=True):
+                    st.session_state.pop("metal_cache", None)
+            with cinfo:
+                st.caption("Live COMEX futures data (Yahoo Finance) • Prices in USD/oz • Auto-cached for 15 min. "
+                           "Momentum = EMA trend + MACD + RSI + volume + 16-pattern detection, then 20-day breakout logic.")
+
+            mc = st.session_state.get("metal_cache")
+            if not mc or _time.time() - mc["ts"] > 900:
+                with st.spinner("Fetching Gold & Silver market data…"):
+                    mc = {
+                        "ts": _time.time(),
+                        "GOLD": get_metal_report("GOLD"),
+                        "SILVER": get_metal_report("SILVER"),
+                    }
+                st.session_state.metal_cache = mc
+
+            col_gold, col_silver = st.columns(2, gap="large")
+            with col_gold:
+                render_commodity_panel(mc["GOLD"])
+            with col_silver:
+                render_commodity_panel(mc["SILVER"])
+
+            st.info("💡 **How to read this:** The strongest trades happen when all 5 timeframe arrows point the same way "
+                    "**and** price breaks out of the 20-day range on above-average volume (🚀 Confirmed). "
+                    "Directional confluence ≠ certainty — always use your own risk management.")
 
     except Exception as e:
         st.error(f"App Error: {e}")

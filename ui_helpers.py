@@ -500,3 +500,96 @@ def load_watchlist():
     if "watchlist" not in st.session_state:
         st.session_state.watchlist = []
     return st.session_state.watchlist
+
+
+# ====================== GOLD & SILVER PANEL ======================
+def render_commodity_panel(rep):
+    """Full Gold/Silver multi-timeframe panel — Groww style."""
+    name, icon, unit = rep["name"], rep["icon"], rep["unit"]
+    chg = rep.get("change_pct", 0)
+    chg_chip = _chip(f"{'▲' if chg >= 0 else '▼'} {abs(chg)}%", "green" if chg >= 0 else "red")
+    sim_chip = _chip("SIMULATED", "gray") if rep.get("simulated") else ""
+
+    # ---- header ----
+    st.markdown(f"""
+    <div class="opl-card" style="padding:16px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:26px;">{icon}</span>
+            <div style="flex:1;">
+                <div style="font-size:18px; font-weight:700; color:{HEADING};">{name} {sim_chip}</div>
+                <div style="font-size:12px; color:{MUTED};">{unit} • COMEX futures</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:22px; font-weight:700; color:{INK};">${rep['ltp']:,.2f}</div>
+                {chg_chip}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ---- multi-timeframe momentum table ----
+    rows = ""
+    for label, tf in rep["timeframes"].items():
+        d = tf["direction"]
+        tone = "green" if d == "Bullish" else ("red" if d == "Bearish" else "gray")
+        scol = GREEN_DARK if tf["score"] > 0 else (RED_DARK if tf["score"] < 0 else MUTED)
+        rows += (
+            f'<div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-bottom:1px solid {GRAY_TINT};">'
+            f'<span style="flex:1; font-size:13px; font-weight:600; color:{INK};">{label}</span>'
+            f'{_chip(d, tone)}'
+            f'<span style="width:78px; text-align:right; font-size:13px; font-weight:700; color:{scol};">{tf["score"]:+.1f} <small style="color:{MUTED}; font-weight:500;">/ 17</small></span>'
+            f'</div>'
+        )
+    st.markdown(f"""
+    <div class="opl-card" style="padding:6px 6px 2px 6px;">
+        <div style="font-size:13px; font-weight:700; color:{HEADING}; padding:6px 8px 2px;">⏱️ Multi-Timeframe Momentum</div>
+        {rows}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ---- consensus meter ----
+    cons = rep["consensus"]
+    w = round(min(abs(cons) / SCORE_MAX, 1.0) * 50, 1)
+    if cons >= 0:
+        ml, mcol = 50.0, GREEN
+    else:
+        ml, mcol = round(50.0 - w, 1), RED
+    cd = rep["consensus_dir"]
+    cd_tone = "green" if "Bullish" in cd else ("red" if "Bearish" in cd else "gray")
+    st.markdown(f"""
+    <div class="opl-card" style="padding:12px 14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:13.5px; font-weight:700; color:{HEADING};">🧭 Multi-TF Consensus</span>
+            {_chip(f"{cd} • {cons:+.1f} / 17", cd_tone)}
+        </div>
+        <div style="position:relative; background:{NEUT_BAR}; border-radius:999px; height:7px;">
+            <div style="position:absolute; left:50%; top:-2px; width:2px; height:11px; background:#C9CDD4; border-radius:2px;"></div>
+            <div style="position:absolute; left:{ml}%; width:{w}%; background:{mcol}; height:7px; border-radius:999px;"></div>
+        </div>
+        <div style="font-size:11.5px; color:{MUTED}; margin-top:6px;">🟢 {rep['bull_count']} timeframes bullish • 🔴 {rep['bear_count']} bearish</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ---- breakout (price + volume) ----
+    brk = rep["breakout"]
+    if brk["state"] == "up":
+        b_icon, b_lbl, b_bg, b_brd, b_col = "🚀", "Upside Breakout", GREEN_TINT, "#BFE9D8", GREEN_DARK
+    elif brk["state"] == "down":
+        b_icon, b_lbl, b_bg, b_brd, b_col = "⚠️", "Downside Breakdown", RED_TINT, "#F3CDC2", RED_DARK
+    else:
+        b_icon, b_lbl, b_bg, b_brd, b_col = "⏸️", "Inside 20D Range", GRAY_TINT, BORDER, MUTED
+    st.markdown(f"""
+    <div style="background:{b_bg}; border:1px solid {b_brd}; border-radius:12px; padding:13px 15px; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:14px; font-weight:700; color:{b_col};">{b_icon} {b_lbl}</span>
+            <span class="chip chip-{'green' if brk['state']=='up' else 'red' if brk['state']=='down' else 'gray'}">{brk['strength']}</span>
+        </div>
+        <div style="font-size:12.5px; color:{INK}; margin-top:6px;">{brk['note']}</div>
+        <div style="font-size:12px; color:{MUTED}; margin-top:3px;">Volume {brk['vol_ratio']}× of 20-day avg • Range {brk['lo20']:,.1f} – {brk['hi20']:,.1f}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ---- forecast ----
+    with st.container(border=True):
+        st.markdown("**🔮 Forecast**")
+        st.markdown(rep["forecast"])
