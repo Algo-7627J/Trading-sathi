@@ -1,6 +1,7 @@
 # ui_helpers.py — Groww-style UI components for RAO SAHAB
 import streamlit as st
 import pandas as pd
+from urllib.parse import quote
 
 # ====================== GROWW-STYLE DESIGN TOKENS ======================
 GREEN = "#00B386"        # Groww positive green
@@ -125,6 +126,18 @@ def inject_custom_css():
         margin: 16px 0 8px 0;
     }
     .opl-sechead .t { font-size: 16.5px; font-weight: 700; color: #2B2D3F; }
+
+    /* ---------- Clickable cards (FYERS deep links) ---------- */
+    .opl-link { text-decoration: none !important; display: block; }
+    .opl-card { transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+    .opl-link:hover .opl-card {
+        border-color: #00B386;
+        box-shadow: 0 6px 16px rgba(0,179,134,.15);
+        transform: translateY(-1px);
+        cursor: pointer;
+    }
+    .opl-ext { font-size: 12px; color: #C9CDD4; margin-left: 5px; font-weight: 700; }
+    .opl-link:hover .opl-ext { color: #00B386; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -148,6 +161,42 @@ def _tone_for_signal(signal):
     if "sell" in s or "bearish" in s:
         return "red"
     return "gray"
+
+
+# ====================== FYERS CHART DEEP LINKS ======================
+FYERS_INDEX_SYMS = {
+    "NIFTY50": "NSE:NIFTY50-INDEX",
+    "BANKNIFTY": "NSE:BANKNIFTY-INDEX",
+    "FINNIFTY": "NSE:FINNIFTY-INDEX",
+    "MIDCPNIFTY": "NSE:MIDCPNIFTY-INDEX",
+    "SENSEX": "BSE:SENSEX-INDEX",
+}
+_FYERS_NO_LINK = {"GOLD", "SILVER", "CRUDEOIL", "NATURALGAS", "COPPER"}
+
+
+def fyers_chart_link(symbol):
+    """Deep-link to the FYERS Web chart (Symbol Details) for a symbol."""
+    s = str(symbol or "").upper().strip()
+    if not s or s in _FYERS_NO_LINK:
+        return None
+    if s in FYERS_INDEX_SYMS:
+        fsym = FYERS_INDEX_SYMS[s]
+    elif ":" in s:
+        fsym = s
+    else:
+        fsym = f"NSE:{s}-EQ"
+    return f"https://fyers.in/web/charts?symbol={quote(fsym, safe='')}"
+
+
+def _linkify(card_html, symbol):
+    """Wrap a card in a FYERS chart link (click → new tab)."""
+    link = fyers_chart_link(symbol)
+    if not link:
+        return card_html
+    return (
+        f'<a href="{link}" target="_blank" rel="noopener noreferrer" '
+        f'title="Open {symbol} chart on FYERS ↗" class="opl-link">{card_html}</a>'
+    )
 
 
 # ====================== LAYOUT PIECES ======================
@@ -294,10 +343,10 @@ def _intraday_stock_card(row):
     else:
         ml, mcol = round(50.0 - w, 1), RED
 
-    return f"""
+    card = f"""
     <div class="opl-card {side}">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div><span class="opl-sym">{symbol}</span><span class="opl-sector">{sector}</span></div>
+            <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span><span class="opl-sector">{sector}</span></div>
             <div class="opl-price">{ltp}</div>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
@@ -312,6 +361,7 @@ def _intraday_stock_card(row):
             <span style="font-size:12px; color:{MUTED}; white-space:nowrap;">Score <b style="color:{INK};">{sval:.1f}</b> / {int(SCORE_MAX)}</span>
         </div>
     </div>"""
+    return _linkify(card, symbol)
 
 
 def _nextday_stock_card(row):
@@ -330,10 +380,10 @@ def _nextday_stock_card(row):
     bar_col = GREEN if tone == "green" else RED if tone == "red" else "#C9CDD4"
     ltp_html = f'<span class="opl-price" style="margin-right:10px;">{_fmt_money(ltp)}</span>' if ltp is not None else ""
 
-    return f"""
+    card = f"""
     <div class="opl-card {side}">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div><span class="opl-sym">{symbol}</span><span class="opl-sector">{sector}</span></div>
+            <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span><span class="opl-sector">{sector}</span></div>
             <div>{ltp_html}{_chip(outlook, tone)}</div>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
@@ -347,6 +397,7 @@ def _nextday_stock_card(row):
             <span style="font-size:12px; color:{MUTED}; white-space:nowrap;">{conf}% conf.</span>
         </div>
     </div>"""
+    return _linkify(card, symbol)
 
 
 def _section_head(emoji, label, count, tone):
@@ -473,15 +524,17 @@ def render_sector_stock_row(symbol, score, ltp, signal, is_bull):
         score = f"{float(score):.1f}"
     except (TypeError, ValueError):
         pass
-    return f"""
+    row = f"""
     <div style="background:{bg}; border:1px solid {brd}; border-radius:10px;
                 padding:11px 14px; margin-bottom:6px; display:flex; justify-content:space-between;">
         <div>
             <span style="font-weight:700; color:{txt};">{symbol}</span>
+            <span class="opl-ext">↗</span>
             <span style="margin-left:10px; font-size:13px; color:{MUTED};">Score: {score}</span>
         </div>
         <div style="font-weight:600; color:{INK};">{_fmt_money(ltp)} • {signal}</div>
     </div>"""
+    return _linkify(row, symbol)
 
 
 # ====================== FOOTER ======================
@@ -509,14 +562,17 @@ def render_commodity_panel(rep):
     chg = rep.get("change_pct", 0)
     chg_chip = _chip(f"{'▲' if chg >= 0 else '▼'} {abs(chg)}%", "green" if chg >= 0 else "red")
     sim_chip = _chip("SIMULATED", "gray") if rep.get("simulated") else ""
+    qsym = {"GOLD": "GC=F", "SILVER": "SI=F"}.get(name, "GC=F")
 
     # ---- header ----
     st.markdown(f"""
+    <a href="https://finance.yahoo.com/quote/{qsym}" target="_blank" rel="noopener noreferrer"
+       title="Open {name} detailed chart ↗" class="opl-link">
     <div class="opl-card" style="padding:16px;">
         <div style="display:flex; align-items:center; gap:10px;">
             <span style="font-size:26px;">{icon}</span>
             <div style="flex:1;">
-                <div style="font-size:18px; font-weight:700; color:{HEADING};">{name} {sim_chip}</div>
+                <div style="font-size:18px; font-weight:700; color:{HEADING};">{name}<span class="opl-ext">↗</span> {sim_chip}</div>
                 <div style="font-size:12px; color:{MUTED};">{unit} • COMEX futures</div>
             </div>
             <div style="text-align:right;">
@@ -525,6 +581,7 @@ def render_commodity_panel(rep):
             </div>
         </div>
     </div>
+    </a>
     """, unsafe_allow_html=True)
 
     # ---- multi-timeframe momentum table ----

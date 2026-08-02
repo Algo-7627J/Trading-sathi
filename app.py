@@ -383,6 +383,7 @@ else:
             if df is not None and not df.empty:
                 df_sorted = add_sector_column(df)
                 section_label("📊 Scan Results")
+                st.caption("💡 Click any stock card to open its live chart on FYERS ↗")
 
                 strong_buy = df_sorted[df_sorted["Signal"].str.contains("Buy", case=False, na=False)]
                 strong_sell = df_sorted[df_sorted["Signal"].str.contains("Sell", case=False, na=False)]
@@ -481,6 +482,7 @@ else:
             if nd_df is not None and not nd_df.empty:
                 nd_df = add_sector_column(nd_df)
                 section_label("📅 Next-Day Results")
+                st.caption("💡 Click any stock card to open its live chart on FYERS ↗")
 
                 bias_col = "Bias" if "Bias" in nd_df.columns else "Outlook"
                 nd_bull = nd_df[nd_df[bias_col].astype(str).str.contains("Bullish", case=False, na=False)]
