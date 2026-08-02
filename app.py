@@ -220,9 +220,9 @@ if st.session_state.fyers is None:
             sk_ok = _loaded(SECRET_KEY, 10)
             ru_ok = _loaded(REDIRECT_URL, 10)
 
-            _aid = (str(APP_ID)[:4] + "…" + str(APP_ID)[-4:]) if id_ok else "❌ NOT LOADED"
+            _aid = (str(APP_ID)[:4] + "…" + str(APP_ID)[-4:] + f"  ({len(str(APP_ID))} chars)") if id_ok else "❌ NOT LOADED"
             _sk = f"✅ Loaded ({len(str(SECRET_KEY))} chars)" if sk_ok else "❌ NOT LOADED"
-            _ru = REDIRECT_URL if ru_ok else "❌ NOT LOADED"
+            _ru = (REDIRECT_URL + f"  ({len(str(REDIRECT_URL))} chars)") if ru_ok else "❌ NOT LOADED"
 
             st.markdown("**What the app currently sees:**")
             st.write(f"1️⃣ APP_ID → `{_aid}`")
