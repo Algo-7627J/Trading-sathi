@@ -15,6 +15,7 @@ GREEN_TINT = "#E5F7F0"
 RED_TINT = "#FDECE8"
 GRAY_TINT = "#F1F2F4"
 NEUT_BAR = "#EEF0F2"
+SCORE_MAX = 17.0
 
 
 def inject_custom_css():
@@ -275,16 +276,23 @@ def _intraday_stock_card(row):
     sector = row.get("Sector", "")
     ltp = _fmt_money(row.get("LTP", "N/A"))
     signal = str(row.get("Signal", "Neutral"))
-    score = row.get("Score", 0)
-    try:
-        score = f"{float(score):.1f}"
-    except (TypeError, ValueError):
-        pass
     pattern = row.get("Pattern", "N/A")
     mtf = row.get("MTF Status", "N/A")
     vol = row.get("Volume", "N/A")
     tone = _tone_for_signal(signal)
     side = "bull" if tone == "green" else "bear" if tone == "red" else ""
+
+    try:
+        sval = float(row.get("Score", 0) or 0)
+    except (TypeError, ValueError):
+        sval = 0.0
+
+    # center-anchored score meter: -17 (full red left) .. 0 .. +17 (full green right)
+    w = round(min(abs(sval) / SCORE_MAX, 1.0) * 50, 1)
+    if sval >= 0:
+        ml, mcol = 50.0, GREEN
+    else:
+        ml, mcol = round(50.0 - w, 1), RED
 
     return f"""
     <div class="opl-card {side}">
@@ -293,8 +301,15 @@ def _intraday_stock_card(row):
             <div class="opl-price">{ltp}</div>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
-            <div>{_chip(signal, tone)}<span style="font-size:12px; color:{MUTED}; margin-left:7px;">Score {score}</span></div>
+            <div>{_chip(signal, tone)}</div>
             <div style="font-size:12px; color:{MUTED};">{pattern} • MTF {mtf} • Vol {vol}</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:9px;">
+            <div style="position:relative; flex:1; background:{NEUT_BAR}; border-radius:999px; height:6px;">
+                <div style="position:absolute; left:50%; top:-2px; width:2px; height:10px; background:#C9CDD4; border-radius:2px;"></div>
+                <div style="position:absolute; left:{ml}%; width:{w}%; background:{mcol}; height:6px; border-radius:999px;"></div>
+            </div>
+            <span style="font-size:12px; color:{MUTED}; white-space:nowrap;">Score <b style="color:{INK};">{sval:.1f}</b> / {int(SCORE_MAX)}</span>
         </div>
     </div>"""
 
