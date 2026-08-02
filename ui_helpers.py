@@ -1,4 +1,4 @@
-# ui_helpers.py — Groww-style UI components for Trading Sathi (CODE RED)
+# ui_helpers.py — Groww-style UI components for RAO SAHAB
 import streamlit as st
 import pandas as pd
 
@@ -159,7 +159,7 @@ def render_title(title, subtitle, connected=False):
         <div style="width:44px; height:44px; border-radius:12px;
                     background:linear-gradient(135deg,#00B386,#00D09C);
                     display:flex; align-items:center; justify-content:center;
-                    color:#fff; font-weight:700; font-size:18px; box-shadow:0 2px 6px rgba(0,179,134,.35);">TS</div>
+                    color:#fff; font-weight:700; font-size:18px; box-shadow:0 2px 6px rgba(0,179,134,.35);">RS</div>
         <div>
             <div style="font-size:22px; font-weight:700; color:{HEADING}; line-height:1.15;">{title}</div>
             <div style="font-size:13px; color:{MUTED};">{subtitle}</div>
@@ -474,7 +474,7 @@ def render_footer():
     st.divider()
     st.markdown(
         f"<div style='text-align:center; color:#9AA0AC; font-size:12px; padding:4px 0 22px; line-height:1.7;'>"
-        "Trading Sathi ⚡ CODE RED — Intraday &amp; Next-Day Scanner<br>"
+        "RAO SAHAB ⚡ Intraday &amp; Next-Day Scanner<br>"
         "Data is for analysis &amp; educational purposes only. Not investment advice. Trade at your own risk."
         "</div>",
         unsafe_allow_html=True,

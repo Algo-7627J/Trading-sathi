@@ -120,7 +120,7 @@ from ui_helpers import (
 )
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
-st.set_page_config(page_title="Trading Sathi — CODE RED", layout="wide", page_icon="📈")
+st.set_page_config(page_title="RAO SAHAB", layout="wide", page_icon="📈")
 inject_custom_css()
 ensure_data_files()
 
@@ -154,7 +154,7 @@ for k, v in defaults.items():
 
 df = st.session_state.get("last_scan_df")
 
-render_title("CODE RED", "Trading Sathi — Intraday &amp; Next-Day Scanner", connected=st.session_state.fyers is not None)
+render_title("RAO SAHAB", "Intraday &amp; Next-Day Scanner", connected=st.session_state.fyers is not None)
 
 # ====================== LOGIN SECTION ======================
 if st.session_state.fyers is None:

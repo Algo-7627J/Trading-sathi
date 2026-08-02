@@ -1,6 +1,6 @@
-# Trading Sathi
+# RAO SAHAB
 
-Trading Sathi ek Streamlit-based smart scanner hai jo intraday aur max 2-day holding ideas ke liye design kiya gaya hai.
+RAO SAHAB ek Streamlit-based smart scanner hai jo intraday aur max 2-day holding ideas ke liye design kiya gaya hai.
 
 ## Features
 
