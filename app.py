@@ -52,33 +52,44 @@ def _load_from_secrets():
     sec = st.secrets
     source = "defaults"
 
-    def get_val(key, section="fyers"):
+    # Case-insensitive, section-agnostic secret reader.
+    # Accepts [fyers] / [FYERS] / [Fyers], APP_ID / app_id / App_Id, flat keys, etc.
+    def get_val(key):
+        kn = str(key).strip().upper().replace("-", "_")
+
+        def norm(s):
+            return str(s).strip().upper().replace("-", "_")
+
+        # 1) search ALL sections (any name, any case)
         try:
-            if hasattr(sec, section):
-                sub = getattr(sec, section)
-                if hasattr(sub, key) and getattr(sub, key):
-                    return str(getattr(sub, key)).strip(), "[fyers].dot"
+            for section_name in list(sec.keys()):
+                try:
+                    sub = sec[section_name]
+                except Exception:
+                    continue
+                try:
+                    for k2 in list(sub.keys()):
+                        if norm(k2) == kn and sub[k2]:
+                            return str(sub[k2]).strip(), f"[{section_name}].{k2}"
+                except Exception:
+                    pass
+                try:
+                    for a in dir(sub):
+                        if not a.startswith("_") and norm(a) == kn:
+                            v = getattr(sub, a, None)
+                            if v:
+                                return str(v).strip(), f"[{section_name}].{a}"
+                except Exception:
+                    pass
         except Exception:
             pass
 
+        # 2) flat top-level keys (string values only, skip section dicts)
         try:
-            if section in sec:
-                sub = sec[section]
-                if isinstance(sub, dict) and key in sub and sub[key]:
-                    return str(sub[key]).strip(), "[fyers].dict"
-                if hasattr(sub, key) and getattr(sub, key):
-                    return str(getattr(sub, key)).strip(), "[fyers].attr"
-        except Exception:
-            pass
-
-        try:
-            if key in sec and sec[key]:
-                return str(sec[key]).strip(), "flat"
-        except Exception:
-            pass
-        try:
-            if hasattr(sec, key) and getattr(sec, key):
-                return str(getattr(sec, key)).strip(), "flat_attr"
+            for k2 in list(sec.keys()):
+                v = sec[k2]
+                if norm(k2) == kn and isinstance(v, str) and v:
+                    return v.strip(), f"flat.{k2}"
         except Exception:
             pass
 
