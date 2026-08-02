@@ -125,13 +125,6 @@ inject_custom_css()
 ensure_data_files()
 
 
-def _creds_missing():
-    """True when FYERS credentials are still placeholders."""
-    bad_id = (not APP_ID) or ("YOUR" in str(APP_ID).upper()) or len(str(APP_ID)) < 5
-    bad_secret = (not SECRET_KEY) or ("YOUR" in str(SECRET_KEY).upper()) or len(str(SECRET_KEY)) < 10
-    return bad_id or bad_secret
-
-
 # ====================== SESSION STATE ======================
 defaults = {
     "fyers": None,
@@ -163,14 +156,6 @@ if st.session_state.fyers is None:
         with st.container(border=True):
             st.markdown("### 🔐 Connect to FYERS")
             st.caption("Login with your FYERS account to unlock live intraday & next-day scans.")
-
-            if _creds_missing():
-                st.warning("**FYERS API credentials not configured.** Add them in Streamlit Cloud Secrets, then reboot the app.")
-                st.code("""[fyers]
-APP_ID = "ABCD1234-100"
-SECRET_KEY = "your-full-secret-key"
-REDIRECT_URL = "https://your-app-name.streamlit.app\"""", language="toml")
-                st.caption("Manage app → Settings → Secrets → paste the block above → Save → **Reboot app**.")
 
             if fyersModel is None:
                 st.error("`fyers_apiv3` not installed. Add it to requirements.txt")
