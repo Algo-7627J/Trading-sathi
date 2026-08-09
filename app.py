@@ -129,6 +129,13 @@ except Exception:
 # ====================== END BULLETPROOF CONFIG ======================
 
 import time as _time
+import datetime as _dt
+try:
+    import extra_streamlit_components as stx
+    _STX_AVAILABLE = True
+except Exception:
+    stx = None
+    _STX_AVAILABLE = False
 from services import build_universe
 from analysis import scan_universe
 from next_day import scan_next_day
@@ -146,6 +153,96 @@ from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stock
 st.set_page_config(page_title="RAO SAHAB", layout="wide", page_icon="📈")
 inject_custom_css()
 ensure_data_files()
+
+# ====================== PERSISTENT FYERS LOGIN (Cookie - 12 hours) ======================
+# This restores FYERS session from browser cookie so you don't generate auth_code again and again.
+# Token is saved for 12 hours (FYERS tokens expire daily). Refreshing the page keeps you logged in.
+
+_fyers_cookie_manager = None
+try:
+    if _STX_AVAILABLE and stx is not None:
+        _fyers_cookie_manager = stx.CookieManager(key="fyers_persist_cookie_main")
+        # small delay to let cookie load (required by extra_streamlit_components)
+        _time.sleep(0.15)
+        _saved_token = _fyers_cookie_manager.get(cookie="fyers_access_token")
+        _saved_expiry = _fyers_cookie_manager.get(cookie="fyers_token_expiry")
+        if st.session_state.get("fyers") is None and _saved_token and str(_saved_token) not in ("None", "", "null"):
+            _is_expired = False
+            if _saved_expiry:
+                try:
+                    _exp_ts = float(str(_saved_expiry))
+                    if _time.time() > _exp_ts:
+                        _is_expired = True
+                except Exception:
+                    pass
+            if not _is_expired:
+                try:
+                    if fyersModel is not None:
+                        _test_fyers = fyersModel.FyersModel(client_id=APP_ID, token=str(_saved_token), log_path="")
+                        # Light validation - optional API call (profile). Skip if fails, still consider valid.
+                        try:
+                            # Don't fail if profile call fails - token might still be valid for data
+                            _test_fyers.get_profile = getattr(_test_fyers, "get_profile", None)
+                        except Exception:
+                            pass
+                        st.session_state.fyers = _test_fyers
+                        st.session_state.access_token = str(_saved_token)
+                except Exception:
+                    pass
+            else:
+                try:
+                    _fyers_cookie_manager.delete("fyers_access_token", key="persist_del_token_expired")
+                    _fyers_cookie_manager.delete("fyers_token_expiry", key="persist_del_expiry_expired")
+                except Exception:
+                    pass
+except Exception:
+    pass
+
+# Auto-capture FYERS redirect (if REDIRECT_URL = your streamlit app URL, no copy-paste needed)
+if st.session_state.get("fyers") is None and fyersModel is not None:
+    try:
+        _qp = st.query_params
+        _qp_auth = _qp.get("auth_code") or _qp.get("code") or _qp.get("authCode")
+        if isinstance(_qp_auth, list):
+            _qp_auth = _qp_auth[0] if _qp_auth else None
+        if _qp_auth and len(str(_qp_auth).strip()) > 15:
+            _qp_auth = str(_qp_auth).strip()
+            try:
+                _auto_session = fyersModel.SessionModel(
+                    client_id=APP_ID,
+                    secret_key=SECRET_KEY,
+                    redirect_uri=REDIRECT_URL,
+                    response_type="code",
+                    grant_type="authorization_code"
+                )
+                _auto_session.set_token(_qp_auth)
+                _auto_resp = _auto_session.generate_token()
+                if _auto_resp and isinstance(_auto_resp, dict) and "access_token" in _auto_resp:
+                    _auto_token = _auto_resp["access_token"]
+                    st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=_auto_token, log_path="")
+                    st.session_state.access_token = _auto_token
+                    if _STX_AVAILABLE and _fyers_cookie_manager is not None:
+                        try:
+                            _exp_dt = _dt.datetime.now() + _dt.timedelta(hours=12)
+                            _exp_ts2 = _time.time() + 12*3600
+                            _fyers_cookie_manager.set("fyers_access_token", _auto_token, expires_at=_exp_dt, key="auto_persist_set_token")
+                            _fyers_cookie_manager.set("fyers_token_expiry", str(_exp_ts2), expires_at=_exp_dt, key="auto_persist_set_expiry")
+                        except Exception:
+                            pass
+                    try:
+                        st.query_params.clear()
+                    except Exception:
+                        pass
+                    st.toast("✅ Auto-login successful! Staying logged in for 12 hours.", icon="🔐")
+                    _time.sleep(0.8)
+                    st.rerun()
+            except Exception as _ae:
+                # Don't block UI if auto-login fails, just show hint
+                pass
+    except Exception:
+        pass
+# ====================== END PERSISTENT LOGIN ======================
+
 
 
 # ====================== SESSION STATE ======================
@@ -193,6 +290,7 @@ if st.session_state.fyers is None:
                     )
                     login_url = session.generate_authcode()
                     st.link_button("🚀 Login to FYERS", login_url, type="primary", use_container_width=True)
+                    st.caption("💡 After login, you will be redirected back. If your FYERS Redirect URL is set to this Streamlit app URL, login will be automatic. Otherwise, copy the `auth_code` from the redirect URL and paste below.")
                 except Exception as e:
                     st.error(f"Error generating login URL: {e}")
 
@@ -216,7 +314,22 @@ if st.session_state.fyers is None:
                         if response and isinstance(response, dict) and "access_token" in response:
                             token = response["access_token"]
                             st.session_state.fyers = fyersModel.FyersModel(client_id=APP_ID, token=token, log_path="")
-                            st.success("Login successful!")
+                            st.session_state.access_token = token
+                            # --- Persist token to cookie for 12 hours (no more auth_code on refresh) ---
+                            if _STX_AVAILABLE and _fyers_cookie_manager is not None:
+                                try:
+                                    _exp_dt2 = _dt.datetime.now() + _dt.timedelta(hours=12)
+                                    _exp_ts3 = _time.time() + 12*3600
+                                    _fyers_cookie_manager.set("fyers_access_token", token, expires_at=_exp_dt2, key="manual_persist_set_token")
+                                    _fyers_cookie_manager.set("fyers_token_expiry", str(_exp_ts3), expires_at=_exp_dt2, key="manual_persist_set_expiry")
+                                except Exception as _ce2:
+                                    pass
+                            try:
+                                st.query_params.clear()
+                            except Exception:
+                                pass
+                            st.success("✅ Login successful! You will stay logged in for 12 hours — no need to generate auth_code again on refresh.")
+                            _time.sleep(0.8)
                             st.rerun()
                         else:
                             if isinstance(response, dict):
@@ -315,6 +428,21 @@ else:
 
             if st.button("Logout", use_container_width=True):
                 st.session_state.fyers = None
+                st.session_state.access_token = None
+                if _STX_AVAILABLE and _fyers_cookie_manager is not None:
+                    try:
+                        _fyers_cookie_manager.delete("fyers_access_token", key="logout_del_token")
+                        _fyers_cookie_manager.delete("fyers_token_expiry", key="logout_del_expiry")
+                    except Exception:
+                        pass
+                try:
+                    _fyers_cookie_manager.delete("fyers_access_token", key="logout_del_token2") if _fyers_cookie_manager else None
+                except Exception:
+                    pass
+                try:
+                    st.query_params.clear()
+                except Exception:
+                    pass
                 st.rerun()
 
         render_stat_row([
