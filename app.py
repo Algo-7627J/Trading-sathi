@@ -139,6 +139,7 @@ except Exception:
 from services import build_universe
 from analysis import scan_universe
 from next_day import scan_next_day
+from accuracy import save_predictions, load_predictions, score_predictions, accuracy_summary
 from commodities import get_metal_report
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
@@ -253,6 +254,7 @@ defaults = {
     "last_scan_df": None,
     "run_next_day_scan": False,
     "next_day_df": None,
+    "accuracy_results": None,
     "show_strong_buy": False,
     "show_strong_sell": False,
     "selected_bullish_sector": None,
@@ -453,7 +455,7 @@ else:
         ])
 
         watchlist = load_watchlist()
-        tab1, tab2, tab3, tab4 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend", "🥇 Gold & Silver"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend", "🥇 Gold & Silver", "🎯 Accuracy Report"])
 
         # ==================== TAB 1: INTRADAY ====================
         with tab1:
@@ -605,6 +607,11 @@ else:
                     nd_result = scan_next_day(st.session_state.fyers, nd_symbols, progress=prog)
                     prog.empty()
                     st.session_state.next_day_df = nd_result
+                    try:
+                        save_predictions(nd_result)
+                        st.caption("📝 Today's outlook saved to the Accuracy Tracker (Tab 5).")
+                    except Exception:
+                        pass
 
             nd_df = st.session_state.get("next_day_df")
             if nd_df is not None and not nd_df.empty:
@@ -782,6 +789,97 @@ else:
             st.info("💡 **How to read this:** The strongest trades happen when all 5 timeframe arrows point the same way "
                     "**and** price breaks out of the 20-day range on above-average volume (🚀 Confirmed). "
                     "Directional confluence ≠ certainty — always use your own risk management.")
+
+        # ==================== TAB 5: ACCURACY REPORT ====================
+        with tab5:
+            section_label("🎯 Prediction Accuracy Tracker")
+            st.caption("Each Next-Day Outlook (Tab 2) is logged automatically. Here we compare every "
+                       "prediction against the market's actual next-day move, so you can see how accurate "
+                       "the app really is over time.")
+
+            preds = load_predictions()
+
+            if preds is None or preds.empty:
+                st.info("📭 No predictions logged yet.\n\n"
+                        "Run the **📅 Next-Day Analysis** on Tab 2 — the outlooks are saved here automatically. "
+                        "Come back after the next trading day to see how they performed.")
+            else:
+                n_dates = preds["Prediction_Date"].astype(str).nunique()
+                c1, c2 = st.columns([2, 1])
+                with c1:
+                    st.markdown(f"**{len(preds)}** predictions logged across **{n_dates}** trading day(s).")
+                with c2:
+                    refresh = st.button("🔄 Refresh Accuracy", type="primary",
+                                        use_container_width=True, key="accuracy_refresh")
+
+                if refresh:
+                    st.session_state.accuracy_results = None
+
+                if st.session_state.get("accuracy_results") is None:
+                    if st.session_state.fyers is None:
+                        st.warning("🔒 Not connected to market data. Log in to refresh accuracy.")
+                    else:
+                        with st.spinner("Fetching actual market moves & scoring predictions…"):
+                            prog = st.progress(0.0, text="Checking predictions…")
+                            results = score_predictions(st.session_state.fyers, progress=prog)
+                            prog.empty()
+                        st.session_state.accuracy_results = results
+
+                results = st.session_state.get("accuracy_results")
+                if results is not None and not results.empty:
+                    s = accuracy_summary(results)
+
+                    n1, n2, n3, n4 = st.columns(4)
+                    acc_txt = f"{s['accuracy']:.1f}%" if s["accuracy"] is not None else "—"
+                    with n1:
+                        render_count_tile("ACCURACY", acc_txt, "green", "🎯")
+                    with n2:
+                        render_count_tile("CORRECT", s["correct"], "green", "✅")
+                    with n3:
+                        render_count_tile("WRONG", s["wrong"], "red", "❌")
+                    with n4:
+                        render_count_tile("PENDING", s["pending"], "gray", "⏳")
+
+                    st.caption(f"➖ Sideways (within ±{0.30}%): **{s['sideways']}** · "
+                               f"Total predictions: **{s['total']}**")
+
+                    st.divider()
+                    section_label("Detailed Results")
+
+                    view = st.radio("View", ["Table", "By Day"], horizontal=True, key="acc_view_mode")
+                    disp = results.copy()
+                    vmap = {
+                        "Correct": "✅ Correct", "Wrong": "❌ Wrong",
+                        "Sideways": "➖ Sideways", "Pending": "⏳ Pending",
+                    }
+                    disp["Verdict"] = disp["Verdict"].map(vmap).fillna(disp["Verdict"])
+                    disp["Actual_Move_Pct"] = disp["Actual_Move_Pct"].apply(
+                        lambda x: f"{x:+.2f}%" if pd.notna(x) else "—")
+                    disp = disp.sort_values(
+                        ["Prediction_Date", "Verdict", "Symbol"], ascending=[False, True, True])
+
+                    show_cols = [c for c in ["Prediction_Date", "Symbol", "Bias", "Outlook",
+                                             "Actual_Move_Pct", "Verdict", "Next_Date"]
+                                 if c in disp.columns]
+
+                    if view == "By Day":
+                        for d, g in disp.groupby("Prediction_Date", sort=False):
+                            st.markdown(f"**📅 {d}** — "
+                                        f"{g[g['Verdict'].str.contains('Correct', na=False)].shape[0]} correct · "
+                                        f"{g[g['Verdict'].str.contains('Wrong', na=False)].shape[0]} wrong · "
+                                        f"{g[g['Verdict'].str.contains('Pending', na=False)].shape[0]} pending")
+                            st.dataframe(g[show_cols], use_container_width=True, hide_index=True)
+                    else:
+                        st.dataframe(disp[show_cols], use_container_width=True, hide_index=True)
+
+                    st.download_button(
+                        "⬇️ Download Accuracy Report (CSV)",
+                        results.to_csv(index=False).encode(),
+                        "accuracy_report.csv",
+                        "text/csv",
+                    )
+                elif results is not None:
+                    st.info("No results to show yet.")
 
     except Exception as e:
         st.error(f"App Error: {e}")
