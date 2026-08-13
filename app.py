@@ -140,6 +140,7 @@ from services import build_universe
 from analysis import scan_universe
 from next_day import scan_next_day
 from accuracy import save_predictions, load_predictions, score_predictions, accuracy_summary
+from fii_dii import fetch_fii_dii, log_fii_dii, load_fii_dii_history
 from commodities import get_metal_report
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
@@ -147,7 +148,8 @@ from ui_helpers import (
     render_watchlist_manager, render_next_day_results,
     sort_by_priority, render_compact_table_view, render_compact_cards_view,
     render_sector_card, render_bull_bear_sections, render_count_tile,
-    render_sector_stock_row, render_footer, render_commodity_panel
+    render_sector_stock_row, render_footer, render_commodity_panel,
+    render_fii_dii_banner,
 )
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
@@ -597,6 +599,12 @@ else:
             if nd_limit > 0:
                 nd_symbols = nd_symbols[:nd_limit]
 
+            nd_flow = st.checkbox(
+                "🕒 Analyze last-30min flow (buying vs heavy selling)",
+                value=True, key="nd_flow",
+                help="Fetches 5-min candles to detect accumulation/distribution in the last 30 minutes of the session — a key next-day cue.",
+            )
+
             if st.button("📅 Run Next-Day Analysis", type="primary", use_container_width=True, key="run_next_day"):
                 st.session_state.run_next_day_scan = True
 
@@ -604,7 +612,8 @@ else:
                 st.session_state.run_next_day_scan = False
                 if nd_symbols:
                     prog = st.progress(0.0, text="Analyzing next-day outlook…")
-                    nd_result = scan_next_day(st.session_state.fyers, nd_symbols, progress=prog)
+                    nd_result = scan_next_day(st.session_state.fyers, nd_symbols,
+                                              progress=prog, include_flow=nd_flow)
                     prog.empty()
                     st.session_state.next_day_df = nd_result
                     try:
@@ -612,6 +621,22 @@ else:
                         st.caption("📝 Today's outlook saved to the Accuracy Tracker (Tab 5).")
                     except Exception:
                         pass
+
+            # ---- FII / DII market-wide sentiment (cached for the session) ----
+            if "fii_dii" not in st.session_state:
+                with st.spinner("Fetching FII/DII data…"):
+                    fd = fetch_fii_dii()
+                if fd:
+                    log_fii_dii(fd)
+                st.session_state.fii_dii = fd
+            if st.session_state.get("fii_dii"):
+                render_fii_dii_banner(st.session_state.fii_dii)
+            with st.expander("📜 FII/DII History"):
+                hist = load_fii_dii_history()
+                if hist.empty:
+                    st.caption("No history yet — a new row is saved each time you open this tab.")
+                else:
+                    st.dataframe(hist, use_container_width=True, hide_index=True)
 
             nd_df = st.session_state.get("next_day_df")
             if nd_df is not None and not nd_df.empty:
@@ -859,7 +884,7 @@ else:
                         ["Prediction_Date", "Verdict", "Symbol"], ascending=[False, True, True])
 
                     show_cols = [c for c in ["Prediction_Date", "Symbol", "Bias", "Outlook",
-                                             "Actual_Move_Pct", "Verdict", "Next_Date"]
+                                             "Last30Min", "Actual_Move_Pct", "Verdict", "Next_Date"]
                                  if c in disp.columns]
 
                     if view == "By Day":

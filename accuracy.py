@@ -30,7 +30,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 PRED_COLUMNS = [
     "Prediction_Date", "Symbol", "LTP", "Bias", "Outlook",
-    "Confidence", "Expected_Move", "Key_Levels",
+    "Confidence", "Expected_Move", "Key_Levels", "Last30Min",
 ]
 RESULT_COLUMNS = [
     "Prediction_Date", "Symbol", "Bias", "Base_Close",
@@ -65,7 +65,7 @@ def save_predictions(df: pd.DataFrame, pred_date=None):
     pred_date = str(pred_date)
 
     keep = ["Symbol", "LTP", "Bias", "Outlook", "Confidence",
-            "Expected_Move", "Key_Levels"]
+            "Expected_Move", "Key_Levels", "Last30Min"]
     cols = [c for c in keep if c in df.columns]
     if not cols:
         return

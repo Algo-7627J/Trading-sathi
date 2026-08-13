@@ -364,6 +364,64 @@ def _intraday_stock_card(row):
     return _linkify(card, symbol)
 
 
+def _flow_tone(flow):
+    f = str(flow).lower()
+    if "buying" in f:
+        return GREEN_DARK, GREEN_TINT
+    if "selling" in f:
+        return RED_DARK, RED_TINT
+    return MUTED, GRAY_TINT
+
+
+def _flow_chip(flow):
+    c, bg = _flow_tone(flow)
+    return (f"<span style='display:inline-block; background:{bg}; color:{c}; "
+            f"font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px;'>"
+            f"{flow}</span>")
+
+
+def render_fii_dii_banner(fd):
+    """Market-wide FII/DII net-flow banner for the Next-Day tab."""
+    if not fd:
+        return
+    tone = fd.get("tone", "gray")
+    c = GREEN_DARK if tone == "green" else RED_DARK if tone == "red" else MUTED
+    bg = GREEN_TINT if tone == "green" else RED_TINT if tone == "red" else GRAY_TINT
+
+    def fmt(v):
+        sign = "+" if v >= 0 else ""
+        return f"{sign}{v:,.0f}"
+
+    st.markdown(f"""
+    <div style="background:{bg}; border:1px solid {BORDER}; border-radius:14px;
+                padding:16px 18px; margin:4px 0 14px 0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="font-size:14px; font-weight:700; color:{HEADING};">
+                🏦 FII / DII Activity <span style="font-weight:500; color:{MUTED};">({fd.get('date','')})</span>
+            </div>
+            <div style="font-size:13px; font-weight:600; color:{c};">{fd.get('lean','')}</div>
+        </div>
+        <div style="display:flex; gap:26px; margin-top:10px; flex-wrap:wrap;">
+            <div>
+                <div style="font-size:12px; color:{MUTED};">FII Net</div>
+                <div style="font-size:20px; font-weight:700; color:{GREEN_DARK if fd.get('fii_net',0)>=0 else RED_DARK};">{fmt(fd.get('fii_net',0))} Cr</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:{MUTED};">DII Net</div>
+                <div style="font-size:20px; font-weight:700; color:{GREEN_DARK if fd.get('dii_net',0)>=0 else RED_DARK};">{fmt(fd.get('dii_net',0))} Cr</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:{MUTED};">Total Net</div>
+                <div style="font-size:20px; font-weight:700; color:{GREEN_DARK if fd.get('net_total',0)>=0 else RED_DARK};">{fmt(fd.get('net_total',0))} Cr</div>
+            </div>
+        </div>
+        <div style="font-size:12px; color:{MUTED}; margin-top:8px;">
+            FII Buy {fmt(fd.get('fii_buy',0))} · FII Sell {fmt(fd.get('fii_sell',0))} · DII Buy {fmt(fd.get('dii_buy',0))} · DII Sell {fmt(fd.get('dii_sell',0))} (₹ Cr)
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def _nextday_stock_card(row):
     symbol = row.get("Symbol", "N/A")
     sector = row.get("Sector", "")
@@ -375,6 +433,8 @@ def _nextday_stock_card(row):
         conf = 0
     key_levels = row.get("Key_Levels", "")
     ltp = row.get("LTP", None)
+    flow = row.get("Last30Min", None)
+    flow_detail = row.get("Flow_Detail", "")
     tone = _tone_for_signal(outlook)
     side = "bull" if tone == "green" else "bear" if tone == "red" else ""
     bar_col = GREEN if tone == "green" else RED if tone == "red" else "#C9CDD4"
@@ -389,6 +449,11 @@ def _nextday_stock_card(row):
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
             <span style="font-size:13px; color:{INK}; font-weight:600;">Exp. Move: {exp_move}</span>
             <span style="font-size:12px; color:{MUTED};">{key_levels}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+            <span style="font-size:12px; color:{MUTED};">Last 30min:</span>
+            {_flow_chip(flow) if flow else ""}
+            <span style="font-size:11px; color:{MUTED};">{flow_detail}</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px; margin-top:9px;">
             <div style="flex:1; background:{NEUT_BAR}; border-radius:999px; height:6px;">
@@ -464,7 +529,7 @@ def render_next_day_results(df):
     view_mode = st.radio("View", ["Cards", "Table"], horizontal=True, key="nd_view_mode")
 
     if view_mode == "Table":
-        display_cols = [c for c in ["Symbol", "Sector", "Outlook", "Expected_Move", "Confidence", "Bias", "Key_Levels"] if c in df.columns]
+        display_cols = [c for c in ["Symbol", "Sector", "Outlook", "Expected_Move", "Confidence", "Bias", "Last30Min", "Key_Levels"] if c in df.columns]
         st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
         return
 
