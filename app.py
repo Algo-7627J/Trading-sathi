@@ -141,7 +141,10 @@ from analysis import scan_universe
 from next_day import scan_next_day
 from accuracy import save_predictions, load_predictions, score_predictions, accuracy_summary
 from fii_dii import fetch_fii_dii, log_fii_dii, load_fii_dii_history
-from delivery import fetch_delivery_frame, delivery_date, combine_with_delivery
+from delivery import (
+    fetch_delivery_frame, delivery_date, combine_with_delivery,
+    live_session_move, live_accuracy,
+)
 from commodities import get_metal_report
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
@@ -150,7 +153,7 @@ from ui_helpers import (
     sort_by_priority, render_compact_table_view, render_compact_cards_view,
     render_sector_card, render_bull_bear_sections, render_count_tile,
     render_sector_stock_row, render_footer, render_commodity_panel,
-    render_fii_dii_banner,
+    render_fii_dii_banner, render_delivery_card,
 )
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
@@ -965,34 +968,43 @@ else:
                         with t3:
                             render_count_tile("NEUTRAL", len(neu), "gray", "⚪")
 
-                        def _show(tbl, emoji, head):
-                            if top_n > 0:
-                                tbl = tbl.head(top_n)
+                        def _top(tbl):
+                            return tbl.head(top_n) if top_n > 0 else tbl
+
+                        bull_top = _top(bull)
+                        bear_top = _top(bear)
+
+                        view = st.radio("View Mode", ["Cards", "Table"], horizontal=True, key="delivery_view")
+
+                        def _show(tbl, head):
                             if tbl.empty:
-                                st.caption(f"{emoji} No stocks matching this filter.")
+                                st.caption("No stocks matching this filter.")
                                 return
                             st.markdown(head, unsafe_allow_html=True)
-                            show = [c for c in ["Symbol", "DeliveryPct", "QtyTraded",
-                                                "DeliverableQty", "Signal", "Bias", "Outlook",
-                                                "LTP", "Score", "Confidence", "Last30Min"]
-                                    if c in tbl.columns]
-                            # format
-                            tbl = tbl.copy()
-                            if "DeliveryPct" in tbl.columns:
-                                tbl["DeliveryPct"] = tbl["DeliveryPct"].apply(lambda x: f"{x:.2f}%")
-                            if "QtyTraded" in tbl.columns:
-                                tbl["QtyTraded"] = tbl["QtyTraded"].apply(lambda x: f"{x:,}")
-                            if "DeliverableQty" in tbl.columns:
-                                tbl["DeliverableQty"] = tbl["DeliverableQty"].apply(lambda x: f"{x:,}")
-                            st.dataframe(tbl[show], use_container_width=True, hide_index=True)
+                            if view == "Cards":
+                                for _, r in tbl.iterrows():
+                                    st.markdown(render_delivery_card(r), unsafe_allow_html=True)
+                            else:
+                                show = [c for c in ["Symbol", "DeliveryPct", "QtyTraded",
+                                                    "DeliverableQty", "Signal", "Bias", "Outlook",
+                                                    "LTP", "Score", "Confidence", "Last30Min"]
+                                        if c in tbl.columns]
+                                t = tbl.copy()
+                                if "DeliveryPct" in t.columns:
+                                    t["DeliveryPct"] = t["DeliveryPct"].apply(lambda x: f"{x:.2f}%")
+                                if "QtyTraded" in t.columns:
+                                    t["QtyTraded"] = t["QtyTraded"].apply(lambda x: f"{x:,}")
+                                if "DeliverableQty" in t.columns:
+                                    t["DeliverableQty"] = t["DeliverableQty"].apply(lambda x: f"{x:,}")
+                                st.dataframe(t[show], use_container_width=True, hide_index=True)
 
                         st.divider()
                         section_label("🟢 Highest Delivery + Bullish")
-                        _show(bull, "🟢", "#### 🟢 Highest Delivery + Bullish (conviction buying)")
+                        _show(bull_top, "#### 🟢 Highest Delivery + Bullish (conviction buying)")
 
                         st.divider()
                         section_label("🔴 Highest Delivery + Bearish")
-                        _show(bear, "🔴", "#### 🔴 Highest Delivery + Bearish (delivery-based selling)")
+                        _show(bear_top, "#### 🔴 Highest Delivery + Bearish (delivery-based selling)")
 
                         st.download_button(
                             "⬇️ Download Delivery Combo (CSV)",
@@ -1000,6 +1012,82 @@ else:
                             "delivery_combo.csv",
                             "text/csv",
                         )
+
+                        # ==================== LIVE SESSION CHECK ====================
+                        st.divider()
+                        section_label("🎯 Live Session Check — are the combos behaving?")
+                        st.caption("Checks **today's live move** (vs previous close) for each combo stock. "
+                                   "A 🟢 bullish+delivery stock should be **rising** today; a 🔴 bearish+delivery "
+                                   "stock should be **falling** — the ✓/✗ shows who's on track right now.")
+
+                        if st.button("🔴 Run Live Check", type="primary", use_container_width=True, key="delivery_live_run"):
+                            st.session_state.delivery_live = None
+                            st.session_state.delivery_live_requested = True
+
+                        check_df = pd.concat([bull_top, bear_top], ignore_index=True)
+                        if check_df.empty:
+                            st.info("No combo stocks to check (empty bullish/bearish lists).")
+                        elif st.session_state.get("delivery_live_requested"):
+                            if st.session_state.get("delivery_live") is None:
+                                with st.spinner("Fetching today's live moves…"):
+                                    prog = st.progress(0.0, text="Checking live moves…")
+                                    live_df = live_session_move(st.session_state.fyers, check_df, progress=prog)
+                                    prog.empty()
+                                st.session_state.delivery_live = live_df
+
+                        live_df = st.session_state.get("delivery_live")
+                        if not st.session_state.get("delivery_live_requested"):
+                            st.caption("👆 Click **🔴 Run Live Check** to compare each combo call against today's live movement.")
+                        elif live_df is not None and not live_df.empty:
+                            bull_live = live_df[live_df["Direction"] == "Bullish"]
+                            bear_live = live_df[live_df["Direction"] == "Bearish"]
+                            sb = live_accuracy(bull_live)
+                            sr = live_accuracy(bear_live)
+                            sa = live_accuracy(live_df)
+
+                            def _ontrack(s):
+                                return f"{s['correct']}/{s['correct'] + s['wrong']}" if (s["correct"] + s["wrong"]) else "—"
+
+                            a1, a2, a3 = st.columns(3)
+                            with a1:
+                                render_count_tile("BULLISH ON TRACK", _ontrack(sb), "green", "🟢📦")
+                            with a2:
+                                render_count_tile("BEARISH ON TRACK", _ontrack(sr), "red", "🔴📦")
+                            with a3:
+                                acc_txt = f"{sa['accuracy']:.0f}%" if sa["accuracy"] is not None else "—"
+                                render_count_tile("OVERALL ACCURACY", acc_txt, "gray", "🎯")
+
+                            live_map = live_df.set_index("Symbol").to_dict("index")
+
+                            def _show_live(tbl, head):
+                                if tbl.empty:
+                                    st.caption("No stocks.")
+                                    return
+                                st.markdown(head, unsafe_allow_html=True)
+                                if view == "Cards":
+                                    for _, r in tbl.iterrows():
+                                        lv = live_map.get(r["Symbol"])
+                                        st.markdown(render_delivery_card(r, live=lv), unsafe_allow_html=True)
+                                else:
+                                    disp = live_df[live_df["Symbol"].isin(tbl["Symbol"].tolist())].copy()
+                                    disp = disp[["Symbol", "Direction", "DeliveryPct", "PrevClose", "LTP", "MovePct", "Status"]]
+                                    if "DeliveryPct" in disp.columns:
+                                        disp["DeliveryPct"] = disp["DeliveryPct"].apply(lambda x: f"{x:.2f}%")
+                                    if "MovePct" in disp.columns:
+                                        disp["MovePct"] = disp["MovePct"].apply(lambda x: f"{x:+.2f}%" if pd.notna(x) else "—")
+                                    st.dataframe(disp, use_container_width=True, hide_index=True)
+
+                            st.divider()
+                            _show_live(bull_top, "#### 🟢 Bullish Combo — live behaviour")
+                            st.divider()
+                            _show_live(bear_top, "#### 🔴 Bearish Combo — live behaviour")
+
+                            st.download_button(
+                                "⬇️ Download Live Check (CSV)",
+                                live_df.to_csv(index=False).encode(),
+                                "delivery_live_check.csv",
+                                "text/csv",
+                            )
 
     except Exception as e:
         st.error(f"App Error: {e}")

@@ -465,6 +465,84 @@ def _nextday_stock_card(row):
     return _linkify(card, symbol)
 
 
+def render_delivery_card(row, live=None):
+    """Clickable card for Delivery Combo results (links to FYERS chart)."""
+    symbol = row.get("Symbol", "N/A")
+    direction = str(row.get("Direction", "Neutral"))
+    delv_pct = row.get("DeliveryPct", None)
+    signal = row.get("Signal", "") or row.get("Bias", "") or row.get("Outlook", "") or "—"
+    ltp = row.get("LTP", None)
+    score = row.get("Score", None)
+    conf = row.get("Confidence", None)
+
+    tone = _tone_for_signal(direction)          # Bullish->green, Bearish->red
+    side = "bull" if tone == "green" else "bear" if tone == "red" else ""
+
+    try:
+        dp = float(delv_pct)
+        dp_html = f"{dp:.1f}%"
+    except (TypeError, ValueError):
+        dp_html = "—"
+
+    ltp_html = f'<span class="opl-price" style="margin-right:8px;">{_fmt_money(ltp)}</span>' if ltp is not None else ""
+
+    # score / confidence
+    metric_html = ""
+    if score is not None:
+        try:
+            sval = float(score)
+            mcol = GREEN_DARK if sval >= 0 else RED_DARK
+            metric_html = f'<span style="font-size:12px; color:{MUTED};">Score <b style="color:{mcol};">{sval:+.1f}</b></span>'
+        except (TypeError, ValueError):
+            pass
+    elif conf is not None:
+        try:
+            cval = int(float(conf))
+            metric_html = f'<span style="font-size:12px; color:{MUTED};">Conf. <b style="color:{INK};">{cval}%</b></span>'
+        except (TypeError, ValueError):
+            pass
+
+    # live badge
+    live_html = ""
+    if live:
+        status = live.get("Status", "")
+        move = live.get("MovePct")
+        ltone = live.get("Tone", "gray")
+        c = GREEN_DARK if ltone == "green" else RED_DARK if ltone == "red" else MUTED
+        bg = GREEN_TINT if ltone == "green" else RED_TINT if ltone == "red" else GRAY_TINT
+        if move is not None:
+            arrow = "▲" if move > 0 else "▼" if move < 0 else "•"
+            mv = f"{move:+.2f}%"
+        else:
+            arrow, mv = "•", "—"
+        live_html = (
+            f"<span style='display:inline-block; background:{bg}; color:{c}; "
+            f"font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px;'>"
+            f"{arrow} {mv} · {status}</span>"
+        )
+
+    card = f"""
+    <div class="opl-card {side}">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span></div>
+            <div>{ltp_html}{_chip(direction, tone)}</div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:13px; font-weight:700; color:{HEADING};">📦 {dp_html}</span>
+                <span style="font-size:12px; color:{MUTED};">delivery</span>
+                <span style="font-size:12px; color:{MUTED};">· {signal}</span>
+            </div>
+            {metric_html}
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:9px;">
+            {live_html}
+            <span style="font-size:11px; color:{MUTED};">click for live chart ↗</span>
+        </div>
+    </div>"""
+    return _linkify(card, symbol)
+
+
 def _section_head(emoji, label, count, tone):
     color = GREEN_DARK if tone == "green" else RED_DARK if tone == "red" else MUTED
     return f"""

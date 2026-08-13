@@ -215,3 +215,90 @@ def combine_with_delivery(scan_df: pd.DataFrame, delivery_df: pd.DataFrame) -> p
              "Last30Min", "Expected_Move"]
     df = df[[c for c in order if c in df.columns]]
     return df.sort_values("DeliveryPct", ascending=False).reset_index(drop=True)
+
+
+# ------------------------------------------------------------------
+# Live session verification
+# ------------------------------------------------------------------
+def live_session_move(fyers, merged_df: pd.DataFrame, progress=None) -> pd.DataFrame:
+    """
+    For each delivery-combo stock, fetch today's live move (vs previous
+    close) and check whether it's behaving as its combo direction predicts.
+
+    Bullish combo -> "on track" if rising today; Bearish combo -> "on track"
+    if falling today. Returns DataFrame with:
+      Symbol, Direction, DeliveryPct, PrevClose, LTP, MovePct,
+      Status, Tone, Correct
+    """
+    from analysis import fetch_candles
+
+    if merged_df is None or merged_df.empty or fyers is None:
+        return pd.DataFrame()
+
+    rows = []
+    total = len(merged_df)
+    for i, (_, r) in enumerate(merged_df.iterrows()):
+        symbol = str(r["Symbol"])
+        direction = str(r.get("Direction", "Neutral"))
+        delivery_pct = r.get("DeliveryPct")
+        if progress and (i + 1) % 10 == 0:
+            progress.progress((i + 1) / total, text=f"Checking {symbol}…")
+
+        base = {
+            "Symbol": symbol,
+            "Direction": direction,
+            "DeliveryPct": delivery_pct,
+            "PrevClose": None,
+            "LTP": None,
+            "MovePct": None,
+            "Status": "No data",
+            "Tone": "gray",
+            "Correct": None,
+        }
+        try:
+            df = fetch_candles(fyers, symbol, timeframe_mode="1d")
+            if df is not None and len(df) >= 2:
+                prev_close = float(df["c"].iloc[-2])
+                ltp = float(df["c"].iloc[-1])
+                move_pct = (ltp - prev_close) / prev_close * 100.0 if prev_close else None
+                base["PrevClose"] = round(prev_close, 2)
+                base["LTP"] = round(ltp, 2)
+                base["MovePct"] = round(move_pct, 3) if move_pct is not None else None
+
+                if move_pct is None:
+                    base["Status"] = "No move"
+                    base["Tone"] = "gray"
+                elif direction == "Bullish":
+                    if move_pct > 0:
+                        base["Status"], base["Tone"], base["Correct"] = "✓ Rising", "green", True
+                    elif move_pct < 0:
+                        base["Status"], base["Tone"], base["Correct"] = "✗ Falling", "red", False
+                    else:
+                        base["Status"], base["Tone"] = "• Flat", "gray"
+                elif direction == "Bearish":
+                    if move_pct < 0:
+                        base["Status"], base["Tone"], base["Correct"] = "✓ Falling", "green", True
+                    elif move_pct > 0:
+                        base["Status"], base["Tone"], base["Correct"] = "✗ Rising", "red", False
+                    else:
+                        base["Status"], base["Tone"] = "• Flat", "gray"
+                else:  # neutral
+                    base["Status"] = "• Flat" if abs(move_pct) < 0.3 else ("Rising" if move_pct > 0 else "Falling")
+                    base["Tone"] = "gray"
+        except Exception:
+            pass
+
+        rows.append(base)
+
+    return pd.DataFrame(rows)
+
+
+def live_accuracy(df: pd.DataFrame) -> dict:
+    """Summarise on-track vs against for a live-session check frame."""
+    if df is None or df.empty or "Correct" not in df.columns:
+        return {"total": 0, "correct": 0, "wrong": 0, "accuracy": None}
+    correct = int((df["Correct"] == True).sum())
+    wrong = int((df["Correct"] == False).sum())
+    decided = correct + wrong
+    accuracy = (correct / decided * 100.0) if decided else None
+    return {"total": len(df), "correct": correct, "wrong": wrong, "accuracy": accuracy}
