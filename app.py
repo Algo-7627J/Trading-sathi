@@ -141,6 +141,7 @@ from analysis import scan_universe
 from next_day import scan_next_day
 from accuracy import save_predictions, load_predictions, score_predictions, accuracy_summary
 from fii_dii import fetch_fii_dii, log_fii_dii, load_fii_dii_history
+from delivery import fetch_delivery_frame, delivery_date, combine_with_delivery
 from commodities import get_metal_report
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
@@ -457,7 +458,7 @@ else:
         ])
 
         watchlist = load_watchlist()
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend", "🥇 Gold & Silver", "🎯 Accuracy Report"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend", "🥇 Gold & Silver", "🎯 Accuracy Report", "📦 Delivery Combo"])
 
         # ==================== TAB 1: INTRADAY ====================
         with tab1:
@@ -905,6 +906,100 @@ else:
                     )
                 elif results is not None:
                     st.info("No results to show yet.")
+
+        # ==================== TAB 6: DELIVERY COMBO ====================
+        with tab6:
+            section_label("📦 High Delivery + Scan Combo")
+            st.caption("Delivery % = shares actually delivered to buyers vs total traded. "
+                       "A **bullish scan signal + high delivery %** means investors are taking delivery, "
+                       "not just intraday speculation — a stronger, conviction-based next-day cue.")
+
+            c1, c2, c3 = st.columns([2, 1, 1])
+            with c1:
+                src = st.selectbox(
+                    "Combine with", ["Intraday Scanner", "Next-Day Outlook"], key="delivery_src")
+            with c2:
+                min_delivery = st.slider("Min delivery %", 0, 100, 0, 5, key="delivery_min_pct")
+            with c3:
+                top_n = st.number_input("Top N (0 = All)", min_value=0, value=25, step=5, key="delivery_top_n")
+
+            # ---- fetch delivery data (bulk MTO, cached) ----
+            if st.button("🔄 Fetch Delivery Data", key="delivery_refresh", use_container_width=True):
+                st.session_state.delivery_force = True
+
+            with st.spinner("Loading security-wise delivery data…"):
+                ddf = fetch_delivery_frame(force_refresh=st.session_state.get("delivery_force", False))
+            st.session_state.delivery_force = False
+
+            if ddf.empty:
+                st.warning("⚠️ Could not load delivery data from NSE. Try again later.")
+            else:
+                ddate = delivery_date(ddf)
+                st.caption(f"📆 Delivery data as of **{ddate}** (NSE security-wise delivery, published after market close).")
+
+                # ---- pick the scan source ----
+                if src == "Intraday Scanner":
+                    scan_df = st.session_state.get("last_scan_df")
+                else:
+                    scan_df = st.session_state.get("next_day_df")
+
+                if scan_df is None or scan_df.empty:
+                    st.info(f"⚠️ No **{src}** results yet. Run the scan on its tab first, "
+                            "then come back here to see the delivery combo.")
+                else:
+                    merged = combine_with_delivery(scan_df, ddf)
+                    if merged.empty:
+                        st.info("No overlapping symbols between the scan and delivery data.")
+                    else:
+                        merged = merged[merged["DeliveryPct"] >= min_delivery]
+
+                        bull = merged[merged["Direction"] == "Bullish"]
+                        bear = merged[merged["Direction"] == "Bearish"]
+                        neu = merged[merged["Direction"] == "Neutral"]
+
+                        t1, t2, t3 = st.columns(3)
+                        with t1:
+                            render_count_tile("BULLISH + DELIVERY", len(bull), "green", "📦")
+                        with t2:
+                            render_count_tile("BEARISH + DELIVERY", len(bear), "red", "📦")
+                        with t3:
+                            render_count_tile("NEUTRAL", len(neu), "gray", "⚪")
+
+                        def _show(tbl, emoji, head):
+                            if top_n > 0:
+                                tbl = tbl.head(top_n)
+                            if tbl.empty:
+                                st.caption(f"{emoji} No stocks matching this filter.")
+                                return
+                            st.markdown(head, unsafe_allow_html=True)
+                            show = [c for c in ["Symbol", "DeliveryPct", "QtyTraded",
+                                                "DeliverableQty", "Signal", "Bias", "Outlook",
+                                                "LTP", "Score", "Confidence", "Last30Min"]
+                                    if c in tbl.columns]
+                            # format
+                            tbl = tbl.copy()
+                            if "DeliveryPct" in tbl.columns:
+                                tbl["DeliveryPct"] = tbl["DeliveryPct"].apply(lambda x: f"{x:.2f}%")
+                            if "QtyTraded" in tbl.columns:
+                                tbl["QtyTraded"] = tbl["QtyTraded"].apply(lambda x: f"{x:,}")
+                            if "DeliverableQty" in tbl.columns:
+                                tbl["DeliverableQty"] = tbl["DeliverableQty"].apply(lambda x: f"{x:,}")
+                            st.dataframe(tbl[show], use_container_width=True, hide_index=True)
+
+                        st.divider()
+                        section_label("🟢 Highest Delivery + Bullish")
+                        _show(bull, "🟢", "#### 🟢 Highest Delivery + Bullish (conviction buying)")
+
+                        st.divider()
+                        section_label("🔴 Highest Delivery + Bearish")
+                        _show(bear, "🔴", "#### 🔴 Highest Delivery + Bearish (delivery-based selling)")
+
+                        st.download_button(
+                            "⬇️ Download Delivery Combo (CSV)",
+                            merged.to_csv(index=False).encode(),
+                            "delivery_combo.csv",
+                            "text/csv",
+                        )
 
     except Exception as e:
         st.error(f"App Error: {e}")
