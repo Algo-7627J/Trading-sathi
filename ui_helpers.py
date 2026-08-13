@@ -466,14 +466,17 @@ def _nextday_stock_card(row):
 
 
 def render_delivery_card(row, live=None):
-    """Clickable card for Delivery Combo results (links to FYERS chart)."""
+    """Clickable card for Delivery Combo results (FYERS deep-link).
+    Mirrors the next-day card style: header row, metric row, delivery bar."""
     symbol = row.get("Symbol", "N/A")
     direction = str(row.get("Direction", "Neutral"))
     delv_pct = row.get("DeliveryPct", None)
-    signal = row.get("Signal", "") or row.get("Bias", "") or row.get("Outlook", "") or "—"
+    signal = row.get("Signal", "") or row.get("Bias", "") or row.get("Outlook", "") or ""
     ltp = row.get("LTP", None)
     score = row.get("Score", None)
     conf = row.get("Confidence", None)
+    qty = row.get("QtyTraded", None)
+    delv_qty = row.get("DeliverableQty", None)
 
     tone = _tone_for_signal(direction)          # Bullish->green, Bearish->red
     side = "bull" if tone == "green" else "bear" if tone == "red" else ""
@@ -481,28 +484,42 @@ def render_delivery_card(row, live=None):
     try:
         dp = float(delv_pct)
         dp_html = f"{dp:.1f}%"
+        bar_w = max(0.0, min(dp, 100.0))
     except (TypeError, ValueError):
-        dp_html = "—"
+        dp, dp_html, bar_w = None, "—", 0.0
 
-    ltp_html = f'<span class="opl-price" style="margin-right:8px;">{_fmt_money(ltp)}</span>' if ltp is not None else ""
+    ltp_html = f'<span class="opl-price" style="margin-right:10px;">{_fmt_money(ltp)}</span>' if ltp is not None else ""
 
-    # score / confidence
+    # delivery % progress bar (tinted by direction)
+    bar_col = GREEN if tone == "green" else RED if tone == "red" else "#C9CDD4"
+    bar = (f'<div style="flex:1; background:{NEUT_BAR}; border-radius:999px; height:6px;">'
+           f'<div style="width:{bar_w}%; background:{bar_col}; height:6px; border-radius:999px;"></div></div>')
+
+    # score / confidence metric
     metric_html = ""
     if score is not None:
         try:
             sval = float(score)
             mcol = GREEN_DARK if sval >= 0 else RED_DARK
-            metric_html = f'<span style="font-size:12px; color:{MUTED};">Score <b style="color:{mcol};">{sval:+.1f}</b></span>'
+            metric_html = f'<span style="font-size:12px; color:{MUTED}; white-space:nowrap;">Score <b style="color:{mcol};">{sval:+.1f}</b></span>'
         except (TypeError, ValueError):
             pass
     elif conf is not None:
         try:
             cval = int(float(conf))
-            metric_html = f'<span style="font-size:12px; color:{MUTED};">Conf. <b style="color:{INK};">{cval}%</b></span>'
+            metric_html = f'<span style="font-size:12px; color:{MUTED}; white-space:nowrap;">Conf. <b style="color:{INK};">{cval}%</b></span>'
         except (TypeError, ValueError):
             pass
 
-    # live badge
+    # delivered vs traded quantity
+    qty_html = ""
+    if qty is not None and delv_qty is not None:
+        try:
+            qty_html = f'<span style="font-size:11px; color:{MUTED};">Delv {int(delv_qty):,} / Traded {int(qty):,}</span>'
+        except (TypeError, ValueError):
+            pass
+
+    # live badge (only when live check ran)
     live_html = ""
     if live:
         status = live.get("Status", "")
@@ -517,7 +534,7 @@ def render_delivery_card(row, live=None):
             arrow, mv = "•", "—"
         live_html = (
             f"<span style='display:inline-block; background:{bg}; color:{c}; "
-            f"font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px;'>"
+            f"font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px;'>"
             f"{arrow} {mv} · {status}</span>"
         )
 
@@ -528,16 +545,16 @@ def render_delivery_card(row, live=None):
             <div>{ltp_html}{_chip(direction, tone)}</div>
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:13px; font-weight:700; color:{HEADING};">📦 {dp_html}</span>
-                <span style="font-size:12px; color:{MUTED};">delivery</span>
-                <span style="font-size:12px; color:{MUTED};">· {signal}</span>
-            </div>
-            {metric_html}
+            <span style="font-size:13px; color:{INK}; font-weight:600;">📦 Delivery: {dp_html}</span>
+            <span style="font-size:12px; color:{MUTED};">{signal}</span>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:9px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-top:9px;">
+            {bar}
+            <span style="font-size:12px; color:{MUTED}; white-space:nowrap;">{dp_html}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">{qty_html}{metric_html}</div>
             {live_html}
-            <span style="font-size:11px; color:{MUTED};">click for live chart ↗</span>
         </div>
     </div>"""
     return _linkify(card, symbol)
