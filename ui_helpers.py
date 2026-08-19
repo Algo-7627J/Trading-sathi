@@ -23,68 +23,101 @@ SCORE_MAX = 17.0
 def inject_custom_css():
     st.markdown("""
     <style>
-    /* ---------- Base ---------- */
+    /* ================= Base ================= */
     .stApp { background-color: #FFFFFF; color: #44475B; }
-    .block-container { padding-top: 1.6rem; max-width: 1180px; }
-    h1, h2, h3, h4 { color: #2B2D3F; }
+    .block-container { padding-top: 1.3rem; max-width: 1180px; }
+    h1, h2, h3, h4 { color: #2B2D3F; letter-spacing: -.01em; }
+    ::selection { background: rgba(0,179,134,.20); }
 
-    /* ---------- Sidebar ---------- */
+    /* ================= Scrollbar ================= */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: #F4F5F7; }
+    ::-webkit-scrollbar-thumb { background: #D4D8DE; border-radius: 999px; border: 2px solid #F4F5F7; }
+    ::-webkit-scrollbar-thumb:hover { background: #B9C0C9; }
+
+    /* ================= Sidebar ================= */
     section[data-testid="stSidebar"] {
-        background: #F8F9FA;
+        background: linear-gradient(180deg, #F7F9FA 0%, #FFFFFF 100%);
         border-right: 1px solid #E9EBEE;
     }
+    section[data-testid="stSidebar"] h3 { font-weight: 800; color: #2B2D3F; }
 
-    /* ---------- Buttons ---------- */
+    /* ================= Buttons ================= */
     .stButton > button {
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid #DCE0E4;
         background: #FFFFFF;
         color: #44475B;
         font-weight: 600;
-        transition: all .15s ease;
+        transition: all .18s ease;
+        box-shadow: 0 1px 2px rgba(23,24,29,.03);
     }
     .stButton > button:hover {
         border-color: #00B386;
         color: #00875F;
-        box-shadow: 0 1px 4px rgba(0,179,134,.18);
+        box-shadow: 0 3px 10px rgba(0,179,134,.16);
+        transform: translateY(-1px);
     }
     .stButton > button[kind="primary"] {
-        background: #00B386;
+        background: linear-gradient(135deg, #00B386, #00C48E);
         border-color: #00B386;
         color: #FFFFFF;
+        font-weight: 700;
+        box-shadow: 0 2px 8px rgba(0,179,134,.25);
     }
     .stButton > button[kind="primary"]:hover {
-        background: #009E76;
+        background: linear-gradient(135deg, #009E76, #00B07E);
         border-color: #009E76;
         color: #FFFFFF;
+        box-shadow: 0 4px 14px rgba(0,179,134,.32);
+        transform: translateY(-1px);
     }
+    .stDownloadButton > button { border-radius: 10px; font-weight: 600; }
 
-    /* ---------- Tabs ---------- */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 6px;
-        border-bottom: 1px solid #EEF0F2;
-    }
+    /* ================= Tabs — bold, pill-style ================= */
+    .stTabs [data-baseweb="tab-list"] { gap: 6px; flex-wrap: wrap; }
     .stTabs [data-baseweb="tab"] {
-        font-weight: 600;
+        font-weight: 700 !important;
+        font-size: 13.5px;
+        color: #7C7E8C;
+        padding: 10px 14px;
+        border-radius: 10px 10px 0 0;
+        transition: all .15s ease;
+        white-space: nowrap;
     }
+    .stTabs [data-baseweb="tab"] p { font-weight: 700 !important; }
+    .stTabs [data-baseweb="tab"]:hover { color: #00875F; background: #F4FBF8; }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: #00875F !important;
+        background: linear-gradient(180deg, #E5F7F0 0%, #F0FBF7 100%) !important;
+        box-shadow: inset 0 -3px 0 #00B386;
+    }
+    .stTabs [data-baseweb="tab-highlight"] { display: none; }
+    .stTabs [data-baseweb="tab-border"] { background-color: #EEF0F2; }
 
-    /* ---------- Inputs / widgets polish ---------- */
+    /* ================= Inputs & widgets ================= */
     [data-testid="stDataFrame"] {
         border: 1px solid #E9EBEE;
         border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(23,24,29,.04);
     }
     [data-testid="stExpander"] {
         border: 1px solid #E9EBEE;
-        border-radius: 10px;
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(23,24,29,.03);
     }
+    [data-testid="stExpander"] summary { font-weight: 600; }
+    [data-testid="stAlert"] { border-radius: 12px; }
     div[data-testid="stTextInput"] input,
     div[data-testid="stNumberInput"] input,
     div[data-baseweb="select"] > div {
-        border-radius: 8px !important;
+        border-radius: 10px !important;
     }
     hr { border-color: #EEF0F2; }
+    .stCaption, [data-testid="stCaptionContainer"] p { color: #8A8E9C; }
 
-    /* ---------- Groww-style cards ---------- */
+    /* ================= Cards ================= */
     .opl-card {
         background: #FFFFFF;
         border: 1px solid #E9EBEE;
@@ -92,10 +125,11 @@ def inject_custom_css():
         padding: 12px 14px;
         margin-bottom: 10px;
         box-shadow: 0 1px 2px rgba(23,24,29,.04);
+        transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
     }
     .opl-card.bull { border-left: 4px solid #00B386; }
     .opl-card.bear { border-left: 4px solid #EB5B3C; }
-    .opl-sym { font-size: 16px; font-weight: 700; color: #2F3244; }
+    .opl-sym { font-size: 16px; font-weight: 800; color: #2F3244; letter-spacing: -.01em; }
     .opl-sector { font-size: 12px; color: #7C7E8C; margin-left: 7px; font-weight: 500; }
     .opl-price { font-weight: 700; color: #44475B; font-size: 15px; }
     .opl-sub { font-size: 12.5px; color: #7C7E8C; margin-top: 6px; }
@@ -105,12 +139,14 @@ def inject_custom_css():
         padding: 2px 10px;
         border-radius: 999px;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
+        letter-spacing: .01em;
     }
     .chip-green { background: #E5F7F0; color: #00875F; }
     .chip-red { background: #FDECE8; color: #C93A20; }
     .chip-gray { background: #F1F2F4; color: #7C7E8C; }
 
+    /* ================= Stat & count tiles ================= */
     .opl-tile {
         background: #FFFFFF;
         border: 1px solid #E9EBEE;
@@ -118,19 +154,29 @@ def inject_custom_css():
         padding: 14px 16px;
         text-align: center;
         box-shadow: 0 1px 2px rgba(23,24,29,.04);
+        transition: transform .18s ease, box-shadow .18s ease;
     }
-    .opl-tile .lbl { font-size: 13px; color: #7C7E8C; font-weight: 600; }
+    .opl-tile:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(23,24,29,.07); }
+    .opl-tile .lbl { font-size: 13px; color: #7C7E8C; font-weight: 700; }
     .opl-tile .val { font-size: 30px; font-weight: 800; margin-top: 2px; }
 
-    .opl-sechead {
-        display: flex; align-items: center; gap: 8px;
-        margin: 16px 0 8px 0;
+    .opl-count {
+        transition: transform .18s ease, box-shadow .18s ease;
+        box-shadow: 0 2px 6px rgba(23,24,29,.05);
     }
-    .opl-sechead .t { font-size: 16.5px; font-weight: 700; color: #2B2D3F; }
+    .opl-count:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(23,24,29,.09); }
 
-    /* ---------- Clickable cards (FYERS deep links) ---------- */
+    /* ================= Section labels ================= */
+    .opl-sechead { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px 0; }
+    .opl-sechead-bar {
+        width: 4px; height: 18px; border-radius: 2px;
+        background: linear-gradient(180deg, #00B386, #00D09C);
+        box-shadow: 0 0 0 3px rgba(0,179,134,.12);
+    }
+    .opl-sechead .t { font-size: 17px; font-weight: 800; color: #2B2D3F; letter-spacing: -.01em; }
+
+    /* ================= Clickable cards (FYERS deep links) ================= */
     .opl-link { text-decoration: none !important; display: block; }
-    .opl-card { transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
     .opl-link:hover .opl-card {
         border-color: #00B386;
         box-shadow: 0 6px 16px rgba(0,179,134,.15);
@@ -271,26 +317,38 @@ def gemini_ai_link(symbol):
 # ====================== LAYOUT PIECES ======================
 def render_title(title, subtitle, connected=False):
     """Groww-style top navbar."""
-    dot, dtxt, dcol = ("●", "FYERS Connected", GREEN_DARK) if connected else ("○", "Not Connected", MUTED)
+    if connected:
+        pill_bg, pill_col, dot = GREEN_TINT, GREEN_DARK, "●"
+        status = "FYERS Connected"
+    else:
+        pill_bg, pill_col, dot = GRAY_TINT, MUTED, "○"
+        status = "Not Connected"
     st.markdown(f"""
-    <div style="display:flex; align-items:center; gap:14px; padding:6px 0 14px 0;
-                border-bottom:1px solid {NEUT_BAR}; margin-bottom:16px;">
-        <div style="width:44px; height:44px; border-radius:12px;
+    <div style="display:flex; align-items:center; gap:14px; padding:8px 0 16px 0;
+                border-bottom:1px solid {NEUT_BAR}; margin-bottom:18px;">
+        <div style="width:46px; height:46px; border-radius:13px;
                     background:linear-gradient(135deg,#00B386,#00D09C);
                     display:flex; align-items:center; justify-content:center;
-                    color:#fff; font-weight:700; font-size:18px; box-shadow:0 2px 6px rgba(0,179,134,.35);">RS</div>
+                    color:#fff; font-weight:800; font-size:18px;
+                    box-shadow:0 4px 12px rgba(0,179,134,.30);">RS</div>
         <div>
-            <div style="font-size:22px; font-weight:700; color:{HEADING}; line-height:1.15;">{title}</div>
-            <div style="font-size:13px; color:{MUTED};">{subtitle}</div>
+            <div style="font-size:23px; font-weight:800; color:{HEADING}; line-height:1.15; letter-spacing:-.01em;">{title}</div>
+            <div style="font-size:13px; color:{MUTED}; margin-top:1px;">{subtitle}</div>
         </div>
-        <div style="margin-left:auto; font-size:13px; font-weight:600; color:{dcol};">{dot} {dtxt}</div>
+        <div style="margin-left:auto;">
+            <span style="display:inline-flex; align-items:center; gap:6px; background:{pill_bg};
+                         border:1px solid {BORDER}; border-radius:999px; padding:5px 13px;
+                         font-size:12.5px; font-weight:700; color:{pill_col};">
+                <span style="font-size:9px; line-height:1;">{dot}</span>{status}
+            </span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
 
 def section_label(text):
     st.markdown(
-        f"<div class='opl-sechead'><span class='t'>{text}</span></div>",
+        f"<div class='opl-sechead'><span class='opl-sechead-bar'></span><span class='t'>{text}</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -320,10 +378,10 @@ def render_count_tile(label, count, tone="green", icon=""):
     }
     c, bg, brd = tones.get(tone, tones["gray"])
     st.markdown(f"""
-    <div style="background:{bg}; border:1px solid {brd}; border-radius:14px;
+    <div class="opl-count" style="background:{bg}; border:1px solid {brd}; border-radius:14px;
                 padding:20px; text-align:center;">
-        <div style="font-size:14px; font-weight:600; color:{c};">{icon} {label}</div>
-        <div style="font-size:40px; font-weight:700; color:{c}; margin-top:2px;">{count}</div>
+        <div style="font-size:13px; font-weight:700; color:{c}; letter-spacing:.4px;">{icon} {label}</div>
+        <div style="font-size:38px; font-weight:800; color:{c}; margin-top:3px; line-height:1.1;">{count}</div>
     </div>
     """, unsafe_allow_html=True)
 
