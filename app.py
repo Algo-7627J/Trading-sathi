@@ -165,13 +165,19 @@ from ui_helpers import (
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
 st.set_page_config(page_title="RAO SAHAB", layout="wide", page_icon="📈")
-inject_custom_css(dark=st.session_state.get("dark_mode", False))
+# Theme defaults must exist before CSS injection + sidebar toggles render.
+st.session_state.setdefault("dark_mode", False)
+st.session_state.setdefault("jet_bg", True)
+inject_custom_css(dark=st.session_state.get("dark_mode", False) or st.session_state.get("jet_bg", True),
+                  jet=st.session_state.get("jet_bg", True))
 ensure_data_files()
 
-# ====================== DARK MODE TOGGLE (always available) ======================
+# ====================== THEME TOGGLES (always available) ======================
 with st.sidebar:
+    st.toggle("\U0001F6F8 Su-30 Background", key="jet_bg",
+              help="Premium Su-30 MKI fighter-jet backdrop. Turns on a dark theme so the text stays readable.")
     st.toggle("\U0001F319 Dark Mode", key="dark_mode",
-              help="Switch the whole app between light and dark theme.")
+              help="Light / dark content theme. (Auto-dark when the Su-30 background is on.)")
 
 # ====================== PERSISTENT FYERS LOGIN (Cookie - 12 hours) ======================
 # This restores FYERS session from browser cookie so you don't generate auth_code again and again.
@@ -286,6 +292,7 @@ defaults = {
     "run_sk_scan": False,
     "run_pead_scan": False,
     "dark_mode": False,
+    "jet_bg": True,
 }
 
 for k, v in defaults.items():

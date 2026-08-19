@@ -1,4 +1,7 @@
 # ui_helpers.py — Groww-style UI components for RAO SAHAB
+import base64
+from pathlib import Path
+
 import streamlit as st
 import pandas as pd
 from urllib.parse import quote
@@ -20,7 +23,25 @@ NEUT_BAR = "var(--bar)"
 SCORE_MAX = 17.0
 
 
-def inject_custom_css(dark=False):
+
+# ====================== SU-30 MKI BACKGROUND ======================
+_ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+JET_OVERLAY = 0.78   # darkness of the overlay on top of the jet photo
+
+
+@st.cache_data(show_spinner=False)
+def _jet_data_uri():
+    """Base64 data-URI of the Su-30 MKI backdrop (embedded, no external URL)."""
+    try:
+        p = _ASSETS_DIR / "su30_background.jpg"
+        if p.exists():
+            return "data:image/jpeg;base64," + base64.b64encode(p.read_bytes()).decode()
+    except Exception:
+        pass
+    return None
+
+
+def inject_custom_css(dark=False, jet=False):
     """App-wide theme. `dark=True` swaps the palette to the dark theme."""
     base = """
 <style>
@@ -243,7 +264,30 @@ div[data-baseweb="select"] > div { background: var(--panel); color: var(--ink); 
 hr { border-color: var(--bar); }
 </style>
 """
-    st.markdown(base + (dark_css if dark else ""), unsafe_allow_html=True)
+    jet_css = ""
+    if jet:
+        uri = _jet_data_uri()
+        if uri:
+            ov = f"{JET_OVERLAY:.2f}"
+            jet_css = f"""
+<style>
+/* ===================== SU-30 MKI BACKGROUND ===================== */
+.stApp {{
+  background-color: #07110D;
+  background-image: linear-gradient(rgba(7,17,13,{ov}), rgba(7,17,13,{ov})), url("{uri}");
+  background-size: cover;
+  background-position: center 30%;
+  background-attachment: fixed;
+}}
+[data-testid="stAppViewContainer"] {{ background: transparent !important; }}
+[data-testid="stBottomBlockContainer"] {{ background: transparent !important; }}
+.rs-hero {{
+  background: linear-gradient(120deg, rgba(0,94,82,.55) 0%, rgba(0,154,116,.42) 45%, rgba(0,196,142,.30) 100%);
+  box-shadow: none; border-bottom: 1px solid rgba(255,255,255,.12);
+}}
+</style>
+"""
+    st.markdown(base + (dark_css if dark else "") + jet_css, unsafe_allow_html=True)
 
 
 # ====================== SMALL FORMATTERS ======================
