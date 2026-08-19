@@ -146,6 +146,11 @@ from delivery import (
     live_session_move, live_accuracy,
 )
 from commodities import get_metal_report
+from momentum import (
+    scan_strong_direction, scan_consecutive,
+    render_momentum_card, render_streak_card,
+)
+from pead import scan_pead, render_pead_card, pead_table
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
     inject_custom_css, render_title, section_label, render_stat_row,
@@ -267,6 +272,12 @@ defaults = {
     "selected_bearish_sector": None,
     "sector_timeframe": "1D (Intraday)",
     "watchlist": [],
+    "strong_direction_df": None,
+    "streak_df": None,
+    "pead_df": None,
+    "run_sd_scan": False,
+    "run_sk_scan": False,
+    "run_pead_scan": False,
 }
 
 for k, v in defaults.items():
@@ -461,7 +472,11 @@ else:
         ])
 
         watchlist = load_watchlist()
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend", "🥇 Gold & Silver", "🎯 Accuracy Report", "📦 Delivery Combo"])
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+            "⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend",
+            "🥇 Gold & Silver", "🎯 Accuracy Report", "📦 Delivery Combo",
+            "🧭 Strong Direction", "🔥 Streak Movers", "📢 PEAD Tool",
+        ])
 
         # ==================== TAB 1: INTRADAY ====================
         with tab1:
@@ -1088,6 +1103,237 @@ else:
                                 "delivery_live_check.csv",
                                 "text/csv",
                             )
+
+        # ==================== TAB 7: STRONG DIRECTION (1D + 1W + 1M) ====================
+        with tab7:
+            section_label("🧭 Strong Direction — 1D · 1W · 1M Aligned")
+            st.caption("Stocks whose momentum points the **same way** across the 1-day, 1-week and 1-month "
+                       "timeframes. All three green = Strong Up, all three red = Strong Down — a clean, "
+                       "high-conviction directional bias. Built from ~1 year of daily candles.")
+
+            sd1, sd2, sd3 = st.columns([2, 1, 1])
+            with sd1:
+                sd_scope = st.selectbox(
+                    "Universe",
+                    ["Only F&O Stocks", "Everything", "Only Watchlist"],
+                    key="sd_scope",
+                )
+            with sd2:
+                sd_min = st.number_input("Min move per timeframe (%)", min_value=0.0, value=0.5, step=0.1, key="sd_min")
+            with sd3:
+                sd_limit = st.number_input("Max symbols (0 = All)", min_value=0, value=0, step=10, key="sd_limit")
+
+            if sd_scope == "Everything":
+                sd_chosen = uni["all"]
+            elif sd_scope == "Only Watchlist":
+                sd_chosen = watchlist if watchlist else uni["stocks"]
+            else:
+                sd_chosen = uni["stocks"]
+            if sd_limit > 0:
+                sd_chosen = sd_chosen[:sd_limit]
+
+            if st.button("🧭 Run Strong Direction Scan", type="primary", use_container_width=True, key="run_sd"):
+                st.session_state.run_sd_scan = True
+
+            if st.session_state.get("run_sd_scan"):
+                st.session_state.run_sd_scan = False
+                prog = st.progress(0.0, text="Scanning multi-timeframe momentum…")
+                sd_df = scan_strong_direction(st.session_state.fyers, sd_chosen, min_move=sd_min, progress=prog)
+                prog.empty()
+                st.session_state.strong_direction_df = sd_df
+
+            sd_df = st.session_state.get("strong_direction_df")
+            if sd_df is not None and not sd_df.empty:
+                up = sd_df[sd_df["Direction"] == "Strong Up"].sort_values("Avg %", ascending=False)
+                down = sd_df[sd_df["Direction"] == "Strong Down"].sort_values("Avg %", ascending=True)
+
+                s1, s2 = st.columns(2)
+                with s1:
+                    render_count_tile("STRONG UP (1D+1W+1M)", len(up), "green", "🟢")
+                with s2:
+                    render_count_tile("STRONG DOWN (1D+1W+1M)", len(down), "red", "🔴")
+
+                view = st.radio("View Mode", ["Cards", "Table"], horizontal=True, key="sd_view", label_visibility="collapsed")
+
+                st.divider()
+                section_label("🟢 Strong Up — all timeframes bullish")
+                if up.empty:
+                    st.caption("No strong-up stocks found at the current minimum move.")
+                elif view == "Cards":
+                    for _, r in up.iterrows():
+                        st.markdown(render_momentum_card(r), unsafe_allow_html=True)
+                else:
+                    st.dataframe(up, use_container_width=True, hide_index=True)
+
+                st.divider()
+                section_label("🔴 Strong Down — all timeframes bearish")
+                if down.empty:
+                    st.caption("No strong-down stocks found at the current minimum move.")
+                elif view == "Cards":
+                    for _, r in down.iterrows():
+                        st.markdown(render_momentum_card(r), unsafe_allow_html=True)
+                else:
+                    st.dataframe(down, use_container_width=True, hide_index=True)
+
+                st.download_button("⬇️ Download CSV", sd_df.to_csv(index=False).encode(), "strong_direction.csv", "text/csv")
+            elif sd_df is not None:
+                st.info("No stocks with all three timeframes aligned at the current minimum move.")
+            else:
+                st.info("👆 Click **Run Strong Direction Scan** to find stocks aligned across 1D, 1W and 1M.")
+
+        # ==================== TAB 8: CONSECUTIVE STREAK ====================
+        with tab8:
+            section_label("🔥 Consecutive Streak Movers")
+            st.caption("Stocks that have closed **UP** (or **DOWN**) for N days in a row. Persistent one-way "
+                       "closes usually flag strong momentum — and moves that may be getting over-extended.")
+
+            sk1, sk2, sk3 = st.columns([2, 1, 1])
+            with sk1:
+                sk_scope = st.selectbox("Universe", ["Only F&O Stocks", "Everything", "Only Watchlist"], key="sk_scope")
+            with sk2:
+                sk_min = st.number_input("Min consecutive days", min_value=3, max_value=15, value=5, step=1, key="sk_min")
+            with sk3:
+                sk_limit = st.number_input("Max symbols (0 = All)", min_value=0, value=0, step=10, key="sk_limit")
+
+            if sk_scope == "Everything":
+                sk_chosen = uni["all"]
+            elif sk_scope == "Only Watchlist":
+                sk_chosen = watchlist if watchlist else uni["stocks"]
+            else:
+                sk_chosen = uni["stocks"]
+            if sk_limit > 0:
+                sk_chosen = sk_chosen[:sk_limit]
+
+            if st.button("🔥 Run Streak Scan", type="primary", use_container_width=True, key="run_sk"):
+                st.session_state.run_sk_scan = True
+
+            if st.session_state.get("run_sk_scan"):
+                st.session_state.run_sk_scan = False
+                prog = st.progress(0.0, text="Counting consecutive closes…")
+                sk_df = scan_consecutive(st.session_state.fyers, sk_chosen, min_streak=sk_min, progress=prog)
+                prog.empty()
+                st.session_state.streak_df = sk_df
+
+            sk_df = st.session_state.get("streak_df")
+            if sk_df is not None and not sk_df.empty:
+                up = sk_df[sk_df["Direction"] == "Up"].sort_values("Streak", ascending=False)
+                down = sk_df[sk_df["Direction"] == "Down"].sort_values("Streak", ascending=False)
+
+                k1, k2 = st.columns(2)
+                with k1:
+                    render_count_tile("CONSECUTIVE UP DAYS", len(up), "green", "🟢")
+                with k2:
+                    render_count_tile("CONSECUTIVE DOWN DAYS", len(down), "red", "🔴")
+
+                view = st.radio("View Mode", ["Cards", "Table"], horizontal=True, key="sk_view", label_visibility="collapsed")
+
+                st.divider()
+                section_label(f"🟢 Up {sk_min}+ days in a row")
+                if up.empty:
+                    st.caption("No stocks with a consecutive up-streak at this length.")
+                elif view == "Cards":
+                    for _, r in up.iterrows():
+                        st.markdown(render_streak_card(r), unsafe_allow_html=True)
+                else:
+                    st.dataframe(up, use_container_width=True, hide_index=True)
+
+                st.divider()
+                section_label(f"🔴 Down {sk_min}+ days in a row")
+                if down.empty:
+                    st.caption("No stocks with a consecutive down-streak at this length.")
+                elif view == "Cards":
+                    for _, r in down.iterrows():
+                        st.markdown(render_streak_card(r), unsafe_allow_html=True)
+                else:
+                    st.dataframe(down, use_container_width=True, hide_index=True)
+
+                st.download_button("⬇️ Download CSV", sk_df.to_csv(index=False).encode(), "consecutive_streaks.csv", "text/csv")
+            elif sk_df is not None:
+                st.info(f"No stocks with {sk_min}+ consecutive same-direction closes right now.")
+            else:
+                st.info(f"👆 Click **Run Streak Scan** to find stocks closing up or down {sk_min}+ days in a row.")
+
+        # ==================== TAB 9: PEAD TOOL ====================
+        with tab9:
+            section_label("📢 PEAD — Post-Earnings Announcement Drift")
+            st.caption("Stocks that have **already declared results**. For each stock: **Result Quality** "
+                       "(Good / Mixed / Bad — scored from the EPS surprise vs estimates plus Revenue & Profit "
+                       "YoY growth) and the **post-result drift** — is the stock still *running* after the "
+                       "announcement?")
+
+            pe1, pe2 = st.columns([2, 1])
+            with pe1:
+                pe_scope = st.selectbox("Universe", ["Only F&O Stocks", "Only Watchlist"], key="pe_scope")
+            with pe2:
+                pe_limit = st.number_input(
+                    "Max symbols (0 = All)", min_value=0, value=60, step=10, key="pe_limit",
+                    help="Earnings data is fetched one symbol at a time from Yahoo Finance — scanning the full list takes a few minutes.",
+                )
+
+            if pe_scope == "Only Watchlist":
+                pe_chosen = watchlist if watchlist else uni["stocks"]
+            else:
+                pe_chosen = uni["stocks"]
+            if pe_limit > 0:
+                pe_chosen = pe_chosen[:pe_limit]
+
+            st.caption("ℹ️ Data source: Yahoo Finance earnings calendar + financials, plus FYERS/Yahoo daily candles "
+                       "for the drift. A few NSE symbols have no earnings dates in Yahoo — they are simply skipped.")
+
+            if st.button("📢 Run PEAD Scan", type="primary", use_container_width=True, key="run_pead"):
+                st.session_state.run_pead_scan = True
+
+            if st.session_state.get("run_pead_scan"):
+                st.session_state.run_pead_scan = False
+                prog = st.progress(0.0, text="Fetching earnings & computing drift…")
+                pe_df = scan_pead(st.session_state.fyers, pe_chosen, progress=prog)
+                prog.empty()
+                st.session_state.pead_df = pe_df
+
+            pe_df = st.session_state.get("pead_df")
+            if pe_df is not None and not pe_df.empty:
+                running = pe_df[pe_df["PEAD"].str.contains("Running Up|Drifting Down", case=False, na=False)]
+                good = pe_df[pe_df["Quality"] == "Good"]
+                bad = pe_df[pe_df["Quality"] == "Bad"]
+                p1, p2, p3 = st.columns(3)
+                with p1:
+                    render_count_tile("RUNNING AFTER RESULTS", len(running), "green", "📢")
+                with p2:
+                    render_count_tile("GOOD RESULT", len(good), "green", "✅")
+                with p3:
+                    render_count_tile("BAD RESULT", len(bad), "red", "❌")
+
+                view = st.radio("View Mode", ["Cards", "Table"], horizontal=True, key="pe_view", label_visibility="collapsed")
+
+                def _show_pead(tbl, head):
+                    if tbl.empty:
+                        st.caption("Nothing in this bucket.")
+                        return
+                    st.markdown(head, unsafe_allow_html=True)
+                    if view == "Cards":
+                        for _, r in tbl.iterrows():
+                            st.markdown(render_pead_card(r), unsafe_allow_html=True)
+                    else:
+                        st.dataframe(pead_table(tbl), use_container_width=True, hide_index=True)
+
+                st.divider()
+                _show_pead(pe_df[pe_df["PEAD"].str.contains("Running Up", case=False, na=False)],
+                           "#### 🚀 Running Up after results")
+                st.divider()
+                _show_pead(pe_df[pe_df["PEAD"].str.contains("Drifting Down", case=False, na=False)],
+                           "#### 🔻 Drifting Down after results")
+                st.divider()
+                _show_pead(pe_df[pe_df["PEAD"].str.contains("good result|bad result", case=False, na=False)],
+                           "#### ⚠️ Divergence — price drift vs result quality")
+                st.divider()
+                _show_pead(pe_df[pe_df["PEAD"].str.contains("No Clear Drift", case=False, na=False)],
+                           "#### ➖ No clear drift")
+
+                st.download_button("⬇️ Download PEAD CSV", pe_df.to_csv(index=False).encode(), "pead_tool.csv", "text/csv")
+            elif pe_df is not None:
+                st.info("No recent reported earnings found for the scanned symbols.")
+            else:
+                st.info("👆 Click **Run PEAD Scan** to find stocks with recent results and check whether they're still drifting.")
 
     except Exception as e:
         st.error(f"App Error: {e}")

@@ -16,6 +16,9 @@ RAO SAHAB ek Streamlit-based smart scanner hai jo intraday aur max 2-day holding
 - Real fundamentals & quarterly results (via Screener.in, best-effort)
 - Sector-wise results view with tabs, Strong Buy/Strong Sell always shown first, as bar charts
 - **Next-Day Outlook**: daily-candle based, backtested next-day direction calls
+- **Strong Direction (🧭)**: stocks whose momentum is aligned in the same direction across 1-Day, 1-Week & 1-Month timeframes
+- **Streak Movers (🔥)**: stocks closing up (or down) for N consecutive days
+- **PEAD Tool (📢)**: Post-Earnings Announcement Drift — result quality (Good/Mixed/Bad) + whether the stock is still drifting after results
 - Persistent watchlist (add/remove symbols, dedicated results section)
 - Live auto-refresh scanning
 - Telegram alerts
@@ -83,6 +86,41 @@ every call here comes with a **backtested historical hit-rate**:
 a decision-support tool, not a guarantee. Past hit-rate doesn't guarantee
 future accuracy, and it can't see tomorrow's news, results, or block deals.
 Always apply your own risk management.
+
+## Strong Direction (1D + 1W + 1M)
+
+A dedicated tab ("🧭 Strong Direction") that lists stocks whose momentum points
+the **same way** across three timeframes:
+
+- **1 Day** = latest session move
+- **1 Week** = last 5 sessions
+- **1 Month** = last 21 sessions
+
+All three green → **Strong Up**; all three red → **Strong Down**. A minimum
+move per timeframe (default 0.5%) filters out noise. Built from ~1 year of
+daily candles (FYERS first, Yahoo Finance as an automatic fallback).
+
+## Streak Movers (Consecutive Closes)
+
+A tab ("🔥 Streak Movers") that finds stocks which have closed **UP** (or
+**DOWN**) for N days in a row (default 5). Persistent one-way closes flag
+strong momentum — and moves that may be getting over-extended.
+
+## PEAD Tool (Post-Earnings Announcement Drift)
+
+A tab ("📢 PEAD Tool") for stocks that have **already declared results**. For
+each stock it shows:
+
+- **Result Quality** — Good / Mixed / Bad, scored from the EPS surprise vs.
+  analyst estimates plus Revenue & Profit YoY growth (Yahoo Finance earnings
+  calendar + quarterly financials).
+- **Reaction** — the immediate price move on the announcement.
+- **Drift (PEAD)** — whether the stock is still *running* in the direction of
+  the result after the announcement (`Running Up (PEAD)`, `Drifting Down
+  (PEAD)`, or divergence setups where price moved against the result quality).
+
+Earnings data is fetched one symbol at a time from Yahoo Finance, so scanning
+the full F&O list takes a few minutes — a symbol limit is applied by default.
 
 ## Watchlist
 
