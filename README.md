@@ -181,3 +181,12 @@ Aapko Streamlit secrets me ye values add karni hongi:
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+## Logic Documentation
+
+Har section ka **working logic** samajhne ke liye:
+
+- **In-app**: har tab ke top par **"📖 How does this work?"** expander kholein — wahi logic short form mein.
+- **Full doc**: [`LOGIC.md`](LOGIC.md) — saare sections (scoring engine, Intraday, Next-Day, Sector,
+  Gold & Silver, Accuracy, Delivery Combo, Strong Direction, Streak Movers, PEAD, AI analysis) ka
+  step-by-step logic, scoring thresholds, aur data sources.

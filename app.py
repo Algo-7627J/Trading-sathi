@@ -151,6 +151,7 @@ from momentum import (
     render_momentum_card, render_streak_card,
 )
 from ai_analysis import analyze_moves, get_news_bulk
+from logic_docs import LOGIC, render_logic_expander
 from pead import scan_pead, render_pead_card, pead_table
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
@@ -481,6 +482,7 @@ else:
 
         # ==================== TAB 1: INTRADAY ====================
         with tab1:
+            render_logic_expander("📖 How the Intraday Scanner works", LOGIC["intraday"])
             section_label("Scan Settings")
             c1, c2, c3, c4, c5 = st.columns(5)
             with c1:
@@ -585,6 +587,7 @@ else:
 
         # ==================== TAB 2: NEXT-DAY OUTLOOK ====================
         with tab2:
+            render_logic_expander("📖 How the Next-Day Outlook works", LOGIC["next_day"])
             section_label("Next-Day Outlook Settings")
             nd1, nd2 = st.columns([2, 1])
             with nd1:
@@ -694,6 +697,7 @@ else:
 
         # ==================== TAB 3: SECTOR TREND ====================
         with tab3:
+            render_logic_expander("📖 How the Sector Trend works", LOGIC["sector"])
             section_label("Sector Trend Analysis")
 
             col_tf, col_info = st.columns([1, 2])
@@ -805,6 +809,7 @@ else:
 
         # ==================== TAB 4: GOLD & SILVER ====================
         with tab4:
+            render_logic_expander("📖 How the Gold & Silver forecast works", LOGIC["metals"])
             section_label("🥇 Gold & Silver — Multi-Timeframe Forecast")
 
             cbtn, cinfo = st.columns([1, 3])
@@ -837,6 +842,7 @@ else:
 
         # ==================== TAB 5: ACCURACY REPORT ====================
         with tab5:
+            render_logic_expander("📖 How the Accuracy Tracker works", LOGIC["accuracy"])
             section_label("🎯 Prediction Accuracy Tracker")
             st.caption("Each Next-Day Outlook (Tab 2) is logged automatically. Here we compare every "
                        "prediction against the market's actual next-day move, so you can see how accurate "
@@ -928,6 +934,7 @@ else:
 
         # ==================== TAB 6: DELIVERY COMBO ====================
         with tab6:
+            render_logic_expander("📖 How the Delivery Combo works", LOGIC["delivery"])
             section_label("📦 High Delivery + Scan Combo")
             st.caption("Delivery % = shares actually delivered to buyers vs total traded. "
                        "A **bullish scan signal + high delivery %** means investors are taking delivery, "
@@ -1123,6 +1130,8 @@ else:
 
         # ==================== TAB 7: STRONG DIRECTION (1D + 1W + 1M) ====================
         with tab7:
+            render_logic_expander("📖 How Strong Direction works", LOGIC["strong_direction"])
+            render_logic_expander("🤖 How the AI analysis works", LOGIC["ai"])
             section_label("🧭 Strong Direction — 1D · 1W · 1M Aligned")
             st.caption("Stocks whose momentum points the **same way** across the 1-day, 1-week and 1-month "
                        "timeframes. All three green = Strong Up, all three red = Strong Down — a clean, "
@@ -1212,6 +1221,8 @@ else:
 
         # ==================== TAB 8: CONSECUTIVE STREAK ====================
         with tab8:
+            render_logic_expander("📖 How the Streak Movers work", LOGIC["streak"])
+            render_logic_expander("🤖 How the AI analysis works", LOGIC["ai"])
             section_label("🔥 Consecutive Streak Movers")
             st.caption("Stocks that have closed **UP** (or **DOWN**) for N days in a row. Persistent one-way "
                        "closes usually flag strong momentum — and moves that may be getting over-extended.")
@@ -1296,6 +1307,8 @@ else:
 
         # ==================== TAB 9: PEAD TOOL ====================
         with tab9:
+            render_logic_expander("📖 How the PEAD tool works", LOGIC["pead"])
+            render_logic_expander("🤖 How the AI analysis works", LOGIC["ai"])
             section_label("📢 PEAD — Post-Earnings Announcement Drift")
             st.caption("Stocks that have **already declared results**. For each stock: **Result Quality** "
                        "(Good / Mixed / Bad — scored from the EPS surprise vs estimates plus Revenue & Profit "
