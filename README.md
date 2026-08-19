@@ -19,6 +19,7 @@ RAO SAHAB ek Streamlit-based smart scanner hai jo intraday aur max 2-day holding
 - **Strong Direction (🧭)**: stocks whose momentum is aligned in the same direction across 1-Day, 1-Week & 1-Month timeframes
 - **Streak Movers (🔥)**: stocks closing up (or down) for N consecutive days
 - **AI-generated analysis**: every Strong Direction / Streak card now explains the *likely reason* behind the move (real LLM if a key is set, else a rule-based narrative) + latest news headlines (Google News)
+- **Premium UI**: full-width gradient header band, premium dark-green sidebar, bold solid tab buttons, gradient-tinted cards, and a **🌙 Dark Mode toggle** in the sidebar
 - **Delivery % on momentum cards**: NSE security-wise delivery shows the *genuineness* of the move — high delivery = conviction-backed, low = speculative intraday churn
 - **PEAD Tool (📢)**: Post-Earnings Announcement Drift — result quality (Good/Mixed/Bad) + whether the stock is still drifting after results
 - Persistent watchlist (add/remove symbols, dedicated results section)

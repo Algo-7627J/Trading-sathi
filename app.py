@@ -165,8 +165,13 @@ from ui_helpers import (
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
 st.set_page_config(page_title="RAO SAHAB", layout="wide", page_icon="📈")
-inject_custom_css()
+inject_custom_css(dark=st.session_state.get("dark_mode", False))
 ensure_data_files()
+
+# ====================== DARK MODE TOGGLE (always available) ======================
+with st.sidebar:
+    st.toggle("\U0001F319 Dark Mode", key="dark_mode",
+              help="Switch the whole app between light and dark theme.")
 
 # ====================== PERSISTENT FYERS LOGIN (Cookie - 12 hours) ======================
 # This restores FYERS session from browser cookie so you don't generate auth_code again and again.
@@ -280,6 +285,7 @@ defaults = {
     "run_sd_scan": False,
     "run_sk_scan": False,
     "run_pead_scan": False,
+    "dark_mode": False,
 }
 
 for k, v in defaults.items():

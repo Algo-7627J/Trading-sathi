@@ -9,184 +9,241 @@ GREEN = "#00B386"        # Groww positive green
 GREEN_DARK = "#00875F"
 RED = "#EB5B3C"          # Groww negative red
 RED_DARK = "#C93A20"
-INK = "#44475B"          # primary text
-HEADING = "#2B2D3F"      # heading text
-MUTED = "#7C7E8C"        # secondary text
-BORDER = "#E9EBEE"
+INK = "var(--ink)"          # primary text
+HEADING = "var(--heading)"      # heading text
+MUTED = "var(--muted)"        # secondary text
+BORDER = "var(--border)"
 GREEN_TINT = "#E5F7F0"
 RED_TINT = "#FDECE8"
-GRAY_TINT = "#F1F2F4"
-NEUT_BAR = "#EEF0F2"
+GRAY_TINT = "var(--panel)"
+NEUT_BAR = "var(--bar)"
 SCORE_MAX = 17.0
 
 
-def inject_custom_css():
-    st.markdown("""
-    <style>
-    /* ================= Base ================= */
-    .stApp { background-color: #FFFFFF; color: #44475B; }
-    .block-container { padding-top: 1.3rem; max-width: 1180px; }
-    h1, h2, h3, h4 { color: #2B2D3F; letter-spacing: -.01em; }
-    ::selection { background: rgba(0,179,134,.20); }
+def inject_custom_css(dark=False):
+    """App-wide theme. `dark=True` swaps the palette to the dark theme."""
+    base = """
+<style>
+/* ===================== Theme variables ===================== */
+:root {
+  --ink: #44475B; --heading: #2B2D3F; --muted: #7C7E8C;
+  --border: #E9EBEE; --panel: #F1F2F4; --bar: #EEF0F2;
+  --cardbg: #FFFFFF; --appbg: #FFFFFF;
+  --cardbull: #EFFCF7; --cardbear: #FFF3F0;
+}
 
-    /* ================= Scrollbar ================= */
-    ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-track { background: #F4F5F7; }
-    ::-webkit-scrollbar-thumb { background: #D4D8DE; border-radius: 999px; border: 2px solid #F4F5F7; }
-    ::-webkit-scrollbar-thumb:hover { background: #B9C0C9; }
+html, body { overflow-x: hidden; }
 
-    /* ================= Sidebar ================= */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #F7F9FA 0%, #FFFFFF 100%);
-        border-right: 1px solid #E9EBEE;
-    }
-    section[data-testid="stSidebar"] h3 { font-weight: 800; color: #2B2D3F; }
+/* ===================== Base ===================== */
+.stApp { background-color: var(--appbg); color: var(--ink); }
+.block-container { padding-top: 0; max-width: 1180px; }
+h1, h2, h3, h4 { color: var(--heading); letter-spacing: -.01em; }
+::selection { background: rgba(0,179,134,.22); }
 
-    /* ================= Buttons ================= */
-    .stButton > button {
-        border-radius: 10px;
-        border: 1px solid #DCE0E4;
-        background: #FFFFFF;
-        color: #44475B;
-        font-weight: 600;
-        transition: all .18s ease;
-        box-shadow: 0 1px 2px rgba(23,24,29,.03);
-    }
-    .stButton > button:hover {
-        border-color: #00B386;
-        color: #00875F;
-        box-shadow: 0 3px 10px rgba(0,179,134,.16);
-        transform: translateY(-1px);
-    }
-    .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #00B386, #00C48E);
-        border-color: #00B386;
-        color: #FFFFFF;
-        font-weight: 700;
-        box-shadow: 0 2px 8px rgba(0,179,134,.25);
-    }
-    .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #009E76, #00B07E);
-        border-color: #009E76;
-        color: #FFFFFF;
-        box-shadow: 0 4px 14px rgba(0,179,134,.32);
-        transform: translateY(-1px);
-    }
-    .stDownloadButton > button { border-radius: 10px; font-weight: 600; }
+/* ===================== Header / toolbar ===================== */
+header[data-testid="stHeader"] { background: transparent; }
+[data-testid="stDecoration"] { display: none; }
 
-    /* ================= Tabs — bold, pill-style ================= */
-    .stTabs [data-baseweb="tab-list"] { gap: 6px; flex-wrap: wrap; }
-    .stTabs [data-baseweb="tab"] {
-        font-weight: 700 !important;
-        font-size: 13.5px;
-        color: #7C7E8C;
-        padding: 10px 14px;
-        border-radius: 10px 10px 0 0;
-        transition: all .15s ease;
-        white-space: nowrap;
-    }
-    .stTabs [data-baseweb="tab"] p { font-weight: 700 !important; }
-    .stTabs [data-baseweb="tab"]:hover { color: #00875F; background: #F4FBF8; }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        color: #00875F !important;
-        background: linear-gradient(180deg, #E5F7F0 0%, #F0FBF7 100%) !important;
-        box-shadow: inset 0 -3px 0 #00B386;
-    }
-    .stTabs [data-baseweb="tab-highlight"] { display: none; }
-    .stTabs [data-baseweb="tab-border"] { background-color: #EEF0F2; }
+/* ===================== Scrollbar ===================== */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--panel); }
+::-webkit-scrollbar-thumb { background: #C7CDD6; border-radius: 999px; border: 2px solid var(--panel); }
+::-webkit-scrollbar-thumb:hover { background: #A8B0BB; }
 
-    /* ================= Inputs & widgets ================= */
-    [data-testid="stDataFrame"] {
-        border: 1px solid #E9EBEE;
-        border-radius: 12px;
-        overflow: hidden;
-        box-shadow: 0 1px 3px rgba(23,24,29,.04);
-    }
-    [data-testid="stExpander"] {
-        border: 1px solid #E9EBEE;
-        border-radius: 12px;
-        box-shadow: 0 1px 2px rgba(23,24,29,.03);
-    }
-    [data-testid="stExpander"] summary { font-weight: 600; }
-    [data-testid="stAlert"] { border-radius: 12px; }
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input,
-    div[data-baseweb="select"] > div {
-        border-radius: 10px !important;
-    }
-    hr { border-color: #EEF0F2; }
-    .stCaption, [data-testid="stCaptionContainer"] p { color: #8A8E9C; }
+/* ===================== Sidebar — premium dark green ===================== */
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #081B14 0%, #0D2A1F 55%, #103528 100%);
+  border-right: 1px solid rgba(0,179,134,.18);
+  color: #E6F4EE;
+}
+section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2,
+section[data-testid="stSidebar"] h3, section[data-testid="stSidebar"] h4 { color: #FFFFFF; }
+section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: #C4E3D3; }
+section[data-testid="stSidebar"] .stCaption { color: #8FBBA7; }
+section[data-testid="stSidebar"] hr { border-color: rgba(255,255,255,.12); }
+section[data-testid="stSidebar"] .stButton > button {
+  background: rgba(255,255,255,.07); color: #EAF6F0;
+  border: 1px solid rgba(255,255,255,.16); border-radius: 10px; font-weight: 600;
+}
+section[data-testid="stSidebar"] .stButton > button:hover {
+  border-color: #00B386; color: #6FE3BC; background: rgba(0,179,134,.12);
+}
+section[data-testid="stSidebar"] div[data-testid="stTextInput"] input,
+section[data-testid="stSidebar"] div[data-testid="stNumberInput"] input {
+  background: rgba(255,255,255,.08); color: #FFFFFF; border-color: rgba(255,255,255,.18);
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+  background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); color: #FFFFFF;
+}
+section[data-testid="stSidebar"] [data-testid="stCheckbox"] label span,
+section[data-testid="stSidebar"] [data-testid="stToggle"] label span { color: #D9EDE3; }
+section[data-testid="stSidebar"] [data-testid="stExpander"] {
+  background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.14);
+}
 
-    /* ================= Cards ================= */
-    .opl-card {
-        background: #FFFFFF;
-        border: 1px solid #E9EBEE;
-        border-radius: 12px;
-        padding: 12px 14px;
-        margin-bottom: 10px;
-        box-shadow: 0 1px 2px rgba(23,24,29,.04);
-        transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
-    }
-    .opl-card.bull { border-left: 4px solid #00B386; }
-    .opl-card.bear { border-left: 4px solid #EB5B3C; }
-    .opl-sym { font-size: 16px; font-weight: 800; color: #2F3244; letter-spacing: -.01em; }
-    .opl-sector { font-size: 12px; color: #7C7E8C; margin-left: 7px; font-weight: 500; }
-    .opl-price { font-weight: 700; color: #44475B; font-size: 15px; }
-    .opl-sub { font-size: 12.5px; color: #7C7E8C; margin-top: 6px; }
+/* ===================== Buttons ===================== */
+.stButton > button {
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--cardbg); color: var(--ink);
+  font-weight: 700; transition: all .18s ease; box-shadow: 0 1px 2px rgba(23,24,29,.03);
+}
+.stButton > button:hover {
+  border-color: #00B386; color: #00875F;
+  box-shadow: 0 3px 10px rgba(0,179,134,.16); transform: translateY(-1px);
+}
+.stButton > button[kind="primary"] {
+  background: linear-gradient(135deg, #00B386, #00C48E); border-color: #00B386;
+  color: #FFFFFF; font-weight: 800; box-shadow: 0 3px 10px rgba(0,179,134,.28);
+}
+.stButton > button[kind="primary"]:hover {
+  background: linear-gradient(135deg, #009E76, #00B07E); border-color: #009E76;
+  box-shadow: 0 5px 16px rgba(0,179,134,.36); transform: translateY(-1px);
+}
+.stDownloadButton > button { border-radius: 10px; font-weight: 600; }
 
-    .chip {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: .01em;
-    }
-    .chip-green { background: #E5F7F0; color: #00875F; }
-    .chip-red { background: #FDECE8; color: #C93A20; }
-    .chip-gray { background: #F1F2F4; color: #7C7E8C; }
+/* ===================== Tabs — solid green buttons ===================== */
+.stTabs [data-baseweb="tab-list"] { gap: 6px; border-bottom: none; padding: 6px 0 10px 0; flex-wrap: wrap; }
+.stTabs [data-baseweb="tab"] {
+  font-weight: 800 !important; font-size: 13px; color: #00875F;
+  background: var(--cardbg); border: 1.5px solid #00B386; border-radius: 10px;
+  padding: 8px 14px; margin: 0; transition: all .15s ease; white-space: nowrap;
+}
+.stTabs [data-baseweb="tab"] p { font-weight: 800 !important; }
+.stTabs [data-baseweb="tab"]:hover { background: #E5F7F0; color: #00875F; }
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+  background: linear-gradient(135deg, #00B386, #00C48E) !important;
+  color: #FFFFFF !important; border-color: #00B386;
+  box-shadow: 0 4px 12px rgba(0,179,134,.35);
+}
+.stTabs [data-baseweb="tab-highlight"] { display: none; }
+.stTabs [data-baseweb="tab-border"] { background: transparent; }
 
-    /* ================= Stat & count tiles ================= */
-    .opl-tile {
-        background: #FFFFFF;
-        border: 1px solid #E9EBEE;
-        border-radius: 12px;
-        padding: 14px 16px;
-        text-align: center;
-        box-shadow: 0 1px 2px rgba(23,24,29,.04);
-        transition: transform .18s ease, box-shadow .18s ease;
-    }
-    .opl-tile:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(23,24,29,.07); }
-    .opl-tile .lbl { font-size: 13px; color: #7C7E8C; font-weight: 700; }
-    .opl-tile .val { font-size: 30px; font-weight: 800; margin-top: 2px; }
+/* ===================== Inputs & widgets ===================== */
+[data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(23,24,29,.05); }
+[data-testid="stExpander"] { border: 1px solid var(--border); border-radius: 12px; background: var(--cardbg); box-shadow: 0 1px 2px rgba(23,24,29,.03); }
+[data-testid="stExpander"] summary { font-weight: 700; }
+[data-testid="stAlert"] { border-radius: 12px; }
+div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input,
+div[data-baseweb="select"] > div { border-radius: 10px !important; }
+hr { border-color: var(--bar); }
+.stCaption, [data-testid="stCaptionContainer"] p { color: var(--muted); }
 
-    .opl-count {
-        transition: transform .18s ease, box-shadow .18s ease;
-        box-shadow: 0 2px 6px rgba(23,24,29,.05);
-    }
-    .opl-count:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(23,24,29,.09); }
+/* ===================== Hero band (full-width gradient header) ===================== */
+.rs-hero {
+  width: 100vw; max-width: 100vw; margin-left: calc(50% - 50vw);
+  padding: 22px 0 20px 0; position: relative; overflow: hidden;
+  background: linear-gradient(120deg, #005E52 0%, #009A74 45%, #00C48E 100%);
+  box-shadow: 0 4px 20px rgba(0,90,70,.28); margin-bottom: 18px;
+}
+.rs-hero::before {
+  content: ""; position: absolute; width: 340px; height: 340px; border-radius: 50%;
+  background: rgba(255,255,255,.08); top: -170px; right: -80px;
+}
+.rs-hero::after {
+  content: ""; position: absolute; width: 220px; height: 220px; border-radius: 50%;
+  background: rgba(255,255,255,.06); bottom: -120px; left: 28%;
+}
+.rs-hero-inner { max-width: 1180px; margin: 0 auto; padding: 0 26px; display: flex; align-items: center; gap: 16px; position: relative; z-index: 1; }
+.rs-hero-logo {
+  width: 50px; height: 50px; border-radius: 14px; background: rgba(255,255,255,.16);
+  backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center;
+  color: #FFFFFF; font-weight: 800; font-size: 20px; border: 1px solid rgba(255,255,255,.25);
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+}
+.rs-hero-title { font-size: 24px; font-weight: 800; color: #FFFFFF; line-height: 1.15; letter-spacing: -.01em; }
+.rs-hero-sub { font-size: 13px; color: #CFF3E4; margin-top: 2px; }
+.rs-hero-pill {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28);
+  border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 700; color: #FFFFFF;
+  backdrop-filter: blur(4px); white-space: nowrap;
+}
+.rs-hero-pill .dot { font-size: 9px; line-height: 1; }
 
-    /* ================= Section labels ================= */
-    .opl-sechead { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px 0; }
-    .opl-sechead-bar {
-        width: 4px; height: 18px; border-radius: 2px;
-        background: linear-gradient(180deg, #00B386, #00D09C);
-        box-shadow: 0 0 0 3px rgba(0,179,134,.12);
-    }
-    .opl-sechead .t { font-size: 17px; font-weight: 800; color: #2B2D3F; letter-spacing: -.01em; }
+/* ===================== Cards (gradient-tinted) ===================== */
+.opl-card {
+  background: var(--cardbg); border: 1px solid var(--border); border-radius: 14px;
+  padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 2px 6px rgba(23,24,29,.05);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.opl-card.bull { border-left: 4px solid #00B386; background: linear-gradient(135deg, var(--cardbg) 0%, var(--cardbull) 100%); }
+.opl-card.bear { border-left: 4px solid #EB5B3C; background: linear-gradient(135deg, var(--cardbg) 0%, var(--cardbear) 100%); }
+.opl-sym { font-size: 16px; font-weight: 800; color: var(--heading); letter-spacing: -.01em; }
+.opl-sector { font-size: 12px; color: var(--muted); margin-left: 7px; font-weight: 500; }
+.opl-price { font-weight: 700; color: var(--ink); font-size: 15px; }
+.opl-sub { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 
-    /* ================= Clickable cards (FYERS deep links) ================= */
-    .opl-link { text-decoration: none !important; display: block; }
-    .opl-link:hover .opl-card {
-        border-color: #00B386;
-        box-shadow: 0 6px 16px rgba(0,179,134,.15);
-        transform: translateY(-1px);
-        cursor: pointer;
-    }
-    .opl-ext { font-size: 12px; color: #C9CDD4; margin-left: 5px; font-weight: 700; }
-    .opl-link:hover .opl-ext { color: #00B386; }
-    </style>
-    """, unsafe_allow_html=True)
+.chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.chip-green { background: #E5F7F0; color: #00875F; }
+.chip-red { background: #FDECE8; color: #C93A20; }
+.chip-gray { background: var(--panel); color: var(--muted); }
+
+/* ===================== Stat & count tiles ===================== */
+.opl-tile {
+  background: var(--cardbg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 16px; text-align: center; box-shadow: 0 1px 2px rgba(23,24,29,.04);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.opl-tile:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(23,24,29,.07); }
+.opl-tile .lbl { font-size: 13px; color: var(--muted); font-weight: 700; }
+.opl-tile .val { font-size: 30px; font-weight: 800; margin-top: 2px; }
+
+.opl-count { transition: transform .18s ease, box-shadow .18s ease; box-shadow: 0 2px 6px rgba(23,24,29,.05); }
+.opl-count:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(23,24,29,.09); }
+
+/* ===================== Section labels ===================== */
+.opl-sechead { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px 0; }
+.opl-sechead-bar {
+  width: 5px; height: 20px; border-radius: 3px;
+  background: linear-gradient(180deg, #00B386, #00D09C); box-shadow: 0 0 0 3px rgba(0,179,134,.14);
+}
+.opl-sechead .t { font-size: 17px; font-weight: 800; color: var(--heading); letter-spacing: -.01em; }
+
+/* ===================== Clickable cards ===================== */
+.opl-link { text-decoration: none !important; display: block; }
+.opl-link:hover .opl-card { border-color: #00B386; box-shadow: 0 8px 20px rgba(0,179,134,.18); transform: translateY(-1px); cursor: pointer; }
+.opl-ext { font-size: 12px; color: #C9CDD4; margin-left: 5px; font-weight: 700; }
+.opl-link:hover .opl-ext { color: #00B386; }
+
+/* ===================== Markdown tables (logic docs) ===================== */
+[data-testid="stMarkdownContainer"] table { border-collapse: collapse; }
+[data-testid="stMarkdownContainer"] th, [data-testid="stMarkdownContainer"] td { border: 1px solid var(--border); padding: 6px 10px; color: var(--ink); }
+[data-testid="stMarkdownContainer"] th { background: var(--panel); color: var(--heading); font-weight: 700; }
+</style>
+"""
+    dark_css = """
+<style>
+/* ===================== DARK MODE ===================== */
+:root {
+  --ink: #D7E3F0; --heading: #EAF1FA; --muted: #8FA1B5;
+  --border: #243143; --panel: #1B2635; --bar: #22303F;
+  --cardbg: #141F2C; --appbg: #0D1520;
+  --cardbull: #0F2A20; --cardbear: #2B1A16;
+  --text-color: #D7E3F0; --background-color: #0D1520;
+  --secondary-background-color: #141F2C; --primary-color: #00B386;
+}
+.stApp { background-color: var(--appbg); color: var(--ink); }
+header[data-testid="stHeader"] { background: transparent; }
+section[data-testid="stSidebar"] { background: linear-gradient(180deg, #050D0A 0%, #0B1F18 60%, #0D2A1F 100%); }
+.opl-card { box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.chip-green { background: rgba(0,179,134,.16); color: #3EE6A2; }
+.chip-red { background: rgba(235,91,60,.16); color: #FF9078; }
+.chip-gray { background: var(--panel); color: var(--muted); }
+.opl-ext { color: #4A5A70; }
+.stTabs [data-baseweb="tab"] { background: var(--cardbg); color: #3EE6A2; border-color: rgba(0,179,134,.5); }
+.stTabs [data-baseweb="tab"]:hover { background: rgba(0,179,134,.12); }
+.stTabs [data-baseweb="tab"][aria-selected="true"] { background: linear-gradient(135deg, #00B386, #00C48E) !important; color: #FFFFFF !important; }
+[data-testid="stExpander"] { background: var(--cardbg); }
+[data-testid="stDataFrame"] { border-color: var(--border); }
+div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input { background: var(--panel); color: var(--ink); }
+div[data-baseweb="select"] > div { background: var(--panel); color: var(--ink); border-color: var(--border); }
+.stButton > button { background: var(--cardbg); color: var(--ink); border-color: var(--border); }
+.stButton > button:hover { border-color: #00B386; color: #3EE6A2; }
+hr { border-color: var(--bar); }
+</style>
+"""
+    st.markdown(base + (dark_css if dark else ""), unsafe_allow_html=True)
 
 
 # ====================== SMALL FORMATTERS ======================
@@ -316,31 +373,22 @@ def gemini_ai_link(symbol):
 
 # ====================== LAYOUT PIECES ======================
 def render_title(title, subtitle, connected=False):
-    """Groww-style top navbar."""
+    """Full-width gradient hero band with logo, title and FYERS status pill."""
     if connected:
-        pill_bg, pill_col, dot = GREEN_TINT, GREEN_DARK, "●"
+        dot = '<span class="dot" style="color:#5CE6B8;">●</span>'
         status = "FYERS Connected"
     else:
-        pill_bg, pill_col, dot = GRAY_TINT, MUTED, "○"
+        dot = '<span class="dot" style="color:#D9F2E8;">○</span>'
         status = "Not Connected"
     st.markdown(f"""
-    <div style="display:flex; align-items:center; gap:14px; padding:8px 0 16px 0;
-                border-bottom:1px solid {NEUT_BAR}; margin-bottom:18px;">
-        <div style="width:46px; height:46px; border-radius:13px;
-                    background:linear-gradient(135deg,#00B386,#00D09C);
-                    display:flex; align-items:center; justify-content:center;
-                    color:#fff; font-weight:800; font-size:18px;
-                    box-shadow:0 4px 12px rgba(0,179,134,.30);">RS</div>
-        <div>
-            <div style="font-size:23px; font-weight:800; color:{HEADING}; line-height:1.15; letter-spacing:-.01em;">{title}</div>
-            <div style="font-size:13px; color:{MUTED}; margin-top:1px;">{subtitle}</div>
-        </div>
-        <div style="margin-left:auto;">
-            <span style="display:inline-flex; align-items:center; gap:6px; background:{pill_bg};
-                         border:1px solid {BORDER}; border-radius:999px; padding:5px 13px;
-                         font-size:12.5px; font-weight:700; color:{pill_col};">
-                <span style="font-size:9px; line-height:1;">{dot}</span>{status}
-            </span>
+    <div class="rs-hero">
+        <div class="rs-hero-inner">
+            <div class="rs-hero-logo">RS</div>
+            <div>
+                <div class="rs-hero-title">{title}</div>
+                <div class="rs-hero-sub">{subtitle}</div>
+            </div>
+            <div class="rs-hero-pill">{dot}{status}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
