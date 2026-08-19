@@ -150,6 +150,21 @@ def _fmt_money(v):
         return f"₹{v}"
 
 
+def _fmt_qty(v):
+    """Compact Indian-style share-count: 15.8L / 1.2Cr / 980K."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    if v >= 1e7:
+        return f"{v / 1e7:.2f}Cr"
+    if v >= 1e5:
+        return f"{v / 1e5:.2f}L"
+    if v >= 1e3:
+        return f"{v / 1e3:.0f}K"
+    return f"{int(v)}"
+
+
 def _chip(text, tone="gray"):
     return f'<span class="chip chip-{tone}">{text}</span>'
 
@@ -467,11 +482,15 @@ def _nextday_stock_card(row):
 
 def render_delivery_card(row, live=None):
     """Clickable card for Delivery Combo results (FYERS deep-link).
-    Mirrors the next-day card style: header row, metric row, bar, flow chip."""
+
+    Clean Groww-style layout:
+      header (symbol + LTP + direction chip) → delivery meter → info chips → live strip.
+    """
     symbol = row.get("Symbol", "N/A")
     direction = str(row.get("Direction", "Neutral"))
     delv_pct = row.get("DeliveryPct", None)
-    signal = row.get("Signal", "") or row.get("Bias", "") or row.get("Outlook", "") or ""
+    # prefer the most descriptive signal: intraday "Signal", then next-day "Outlook", then "Bias"
+    signal = row.get("Signal", "") or row.get("Outlook", "") or row.get("Bias", "") or ""
     ltp = row.get("LTP", None)
     score = row.get("Score", None)
     conf = row.get("Confidence", None)
@@ -480,68 +499,97 @@ def render_delivery_card(row, live=None):
     flow = row.get("Last30Min", None)
     flow_detail = row.get("Flow_Detail", "")
 
-    tone = _tone_for_signal(direction)          # Bullish->green, Bearish->red
+    tone = _tone_for_signal(direction)          # Bullish->green, Bearish->red, Neutral->gray
     side = "bull" if tone == "green" else "bear" if tone == "red" else ""
 
+    # ---- delivery % (single source of truth, shown once) ----
     try:
         dp = float(delv_pct)
         dp_html = f"{dp:.1f}%"
         bar_w = max(0.0, min(dp, 100.0))
     except (TypeError, ValueError):
         dp, dp_html, bar_w = None, "—", 0.0
+    bar_col = GREEN if tone == "green" else RED if tone == "red" else "#C9CDD4"
 
-    # LTP (skip if missing/NaN)
+    # ---- LTP ----
     ltp_html = ""
     if ltp is not None:
         try:
             if pd.notna(ltp):
-                ltp_html = f'<span class="opl-price" style="margin-right:10px;">{_fmt_money(ltp)}</span>'
+                ltp_html = f'<span class="opl-price">{_fmt_money(ltp)}</span>'
         except (TypeError, ValueError):
             pass
 
-    # delivery % progress bar (tinted by direction)
-    bar_col = GREEN if tone == "green" else RED if tone == "red" else "#C9CDD4"
-    bar = (f'<div style="flex:1; background:{NEUT_BAR}; border-radius:999px; height:6px;">'
-           f'<div style="width:{bar_w}%; background:{bar_col}; height:6px; border-radius:999px;"></div></div>')
+    # ---- delivery meter (label + value, bar, delivered/traded caption) ----
+    qty_html = ""
+    if qty is not None and delv_qty is not None:
+        try:
+            if pd.notna(qty) and pd.notna(delv_qty):
+                qty_html = (
+                    f'<div style="font-size:11px; color:{MUTED}; margin-top:4px;">'
+                    f'Delivered <b style="color:{INK}; font-weight:600;">{_fmt_qty(delv_qty)}</b>'
+                    f' &nbsp;·&nbsp; Traded <b style="color:{INK}; font-weight:600;">{_fmt_qty(qty)}</b></div>'
+                )
+        except (TypeError, ValueError):
+            pass
 
-    # score / confidence metric
-    metric_html = ""
+    meter = f"""
+    <div style="margin-top:11px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <span style="font-size:11.5px; font-weight:700; letter-spacing:.5px; color:{MUTED};">📦 DELIVERY</span>
+            <span style="font-size:17px; font-weight:800; color:{bar_col};">{dp_html}</span>
+        </div>
+        <div style="margin-top:4px; background:{NEUT_BAR}; border-radius:999px; height:7px;">
+            <div style="width:{bar_w}%; background:{bar_col}; height:7px; border-radius:999px;"></div>
+        </div>
+        {qty_html}
+    </div>"""
+
+    # ---- info chips (signal, score/confidence, last-30min flow) ----
+    chips = []
+
+    sig_clean = str(signal).strip()
+    if sig_clean and sig_clean.lower() not in (direction.lower(), "nan", "none", ""):
+        chips.append(_chip(sig_clean, _tone_for_signal(sig_clean)))
+
     if score is not None:
         try:
             if pd.notna(score):
                 sval = float(score)
                 mcol = GREEN_DARK if sval >= 0 else RED_DARK
-                metric_html = f'<span style="font-size:12px; color:{MUTED}; white-space:nowrap;">Score <b style="color:{mcol};">{sval:+.1f}</b></span>'
+                chips.append(
+                    f'<span style="display:inline-block; background:{GRAY_TINT}; border-radius:999px;'
+                    f' padding:2px 9px; font-size:12px; color:{MUTED}; white-space:nowrap;">'
+                    f'Score <b style="color:{mcol};">{sval:+.1f}</b></span>'
+                )
         except (TypeError, ValueError):
             pass
     elif conf is not None:
         try:
             if pd.notna(conf):
                 cval = int(float(conf))
-                metric_html = f'<span style="font-size:12px; color:{MUTED}; white-space:nowrap;">Conf. <b style="color:{INK};">{cval}%</b></span>'
+                chips.append(
+                    f'<span style="display:inline-block; background:{GRAY_TINT}; border-radius:999px;'
+                    f' padding:2px 9px; font-size:12px; color:{MUTED}; white-space:nowrap;">'
+                    f'Conf <b style="color:{INK};">{cval}%</b></span>'
+                )
         except (TypeError, ValueError):
             pass
 
-    # delivered vs traded quantity
-    qty_html = ""
-    if qty is not None and delv_qty is not None:
-        try:
-            if pd.notna(qty) and pd.notna(delv_qty):
-                qty_html = f'<span style="font-size:11px; color:{MUTED};">Delv {int(delv_qty):,} / Traded {int(qty):,}</span>'
-        except (TypeError, ValueError):
-            pass
+    if flow and str(flow) not in ("", "N/A", "nan", "Skipped"):
+        flow_pill = _flow_chip(flow)
+        if flow_detail and str(flow_detail) not in ("", "—", "nan"):
+            flow_pill += f'<span style="font-size:11px; color:{MUTED};">{flow_detail}</span>'
+        chips.append(flow_pill)
 
-    # last-30min flow chip (when available)
-    flow_html = ""
-    if flow and str(flow) not in ("", "N/A", "nan"):
-        flow_html = (
-            f'<div style="display:flex; align-items:center; gap:8px; margin-top:8px;">'
-            f'<span style="font-size:12px; color:{MUTED};">Last 30min:</span>'
-            f'{_flow_chip(flow)}'
-            f'<span style="font-size:11px; color:{MUTED};">{flow_detail}</span></div>'
+    chips_row = ""
+    if chips:
+        chips_row = (
+            '<div style="display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">'
+            + "".join(chips) + "</div>"
         )
 
-    # live badge (only when live check ran)
+    # ---- live-session strip (only when a live check ran) ----
     live_html = ""
     if live:
         status = live.get("Status", "")
@@ -549,36 +597,28 @@ def render_delivery_card(row, live=None):
         ltone = live.get("Tone", "gray")
         c = GREEN_DARK if ltone == "green" else RED_DARK if ltone == "red" else MUTED
         bg = GREEN_TINT if ltone == "green" else RED_TINT if ltone == "red" else GRAY_TINT
+        brd = "#BFE9D8" if ltone == "green" else "#F3CDC2" if ltone == "red" else BORDER
         if move is not None:
             arrow = "▲" if move > 0 else "▼" if move < 0 else "•"
             mv = f"{move:+.2f}%"
         else:
             arrow, mv = "•", "—"
         live_html = (
-            f"<span style='display:inline-block; background:{bg}; color:{c}; "
-            f"font-size:12px; font-weight:700; padding:2px 9px; border-radius:999px;'>"
-            f"{arrow} {mv} · {status}</span>"
+            f'<div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between;'
+            f' background:{bg}; border:1px solid {brd}; border-radius:8px; padding:6px 11px;">'
+            f'<span style="font-size:11.5px; font-weight:600; color:{MUTED};">📡 Live today</span>'
+            f'<span style="font-size:12.5px; font-weight:700; color:{c};">{arrow} {mv} · {status}</span></div>'
         )
 
     card = f"""
     <div class="opl-card {side}">
         <div style="display:flex; justify-content:space-between; align-items:center;">
             <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span></div>
-            <div>{ltp_html}{_chip(direction, tone)}</div>
+            <div style="display:flex; align-items:center; gap:8px;">{ltp_html}{_chip(direction, tone)}</div>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:7px;">
-            <span style="font-size:13px; color:{INK}; font-weight:600;">📦 Delivery: {dp_html}</span>
-            <span style="font-size:12px; color:{MUTED};">{signal}</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
-            {bar}
-            <span style="font-size:12px; color:{MUTED}; white-space:nowrap;">{dp_html}</span>
-        </div>
-        {flow_html}
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-            <div style="display:flex; align-items:center; gap:8px;">{qty_html}{metric_html}</div>
-            {live_html}
-        </div>
+        {meter}
+        {chips_row}
+        {live_html}
     </div>"""
     return _linkify(card, symbol)
 
