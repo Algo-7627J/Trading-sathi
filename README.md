@@ -126,8 +126,13 @@ note explaining the likely reason behind each move, combining:
    - `ANTHROPIC_API_KEY` (optional `ANTHROPIC_MODEL`, default `claude-3-5-haiku-latest`)
 2. **Built-in fallback** — a rule-based narrative from momentum, delivery %,
    RSI and volume (always available, no key needed).
-3. **News headlines** — latest Google News headlines for the stock (free RSS),
-   shown as the possible *trigger* for the move.
+3. **News headlines** — the two latest Google News headlines for the stock
+   (free RSS), each shown as its **own clickable link** to the article — the
+   possible *trigger* for the move.
+4. **🤖 "Full AI analysis on Gemini" button** — every card has a link that
+   opens **Google AI Studio** (free Gemini, no API key, just Google sign-in)
+   with a pre-filled analysis prompt for that stock. No key or extension
+   needed.
 
 ## PEAD Tool (Post-Earnings Announcement Drift)
 
