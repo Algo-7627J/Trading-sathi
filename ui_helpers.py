@@ -2,6 +2,7 @@
 import streamlit as st
 import pandas as pd
 from urllib.parse import quote
+from html import escape as html_escape
 
 # ====================== GROWW-STYLE DESIGN TOKENS ======================
 GREEN = "#00B386"        # Groww positive green
@@ -212,6 +213,59 @@ def _linkify(card_html, symbol):
         f'<a href="{link}" target="_blank" rel="noopener noreferrer" '
         f'title="Open {symbol} chart on FYERS ↗" class="opl-link">{card_html}</a>'
     )
+
+
+# ====================== SHARED CARD EXTRAS (news links + free Gemini AI) ======================
+def fyers_wrap(symbol, html):
+    """Wrap `html` in the FYERS chart deep-link (or return unchanged).
+
+    Used for the *main body* of cards that also carry news/Gemini links —
+    keeping those outside so anchors never nest (invalid nested <a> breaks
+    the whole card).
+    """
+    link = fyers_chart_link(symbol)
+    if not link:
+        return html
+    safe = html_escape(str(link), quote=True)
+    sym_safe = html_escape(str(symbol))
+    return (f'<a href="{safe}" target="_blank" rel="noopener noreferrer" '
+            f'title="Open {sym_safe} chart on FYERS ↗" class="opl-link" '
+            f'style="text-decoration:none;color:inherit;">{html}</a>')
+
+
+def news_links(news, max_items=2):
+    """Each headline as its OWN clickable link to the article (Google News)."""
+    if not news:
+        return ""
+    items = ""
+    for n in news[:max_items]:
+        title = n["title"] if isinstance(n, dict) else str(n)
+        link = (n.get("link") or "") if isinstance(n, dict) else ""
+        t = html_escape(str(title))
+        if link:
+            l = html_escape(str(link), quote=True)
+            item = (f'<a href="{l}" target="_blank" rel="noopener noreferrer" title="{t}" '
+                    f'style="color:{INK};text-decoration:none;border-bottom:1px dotted {BORDER};">'
+                    f'{t} ↗</a>')
+        else:
+            item = t
+        items += (f'<div style="font-size:11.5px;color:{MUTED};margin-top:4px;">📰 {item}</div>')
+    return items
+
+
+def gemini_ai_link(symbol):
+    """\"🤖 Full AI analysis on Gemini\" deep-link — opens Google AI Studio (free
+    Gemini, no API key, Google sign-in) with a pre-filled stock-analysis prompt."""
+    prompt = (f"Give a complete technical and fundamental analysis of {symbol} (NSE, India): "
+              f"current trend and momentum, key support/resistance levels, delivery percentage and volume context, "
+              f"recent news and results, and the most likely reasons behind its recent price move. "
+              f"End with a short risk summary. Do not give buy/sell advice.")
+    url = "https://aistudio.google.com/prompts/new_chat?prompt=" + quote(prompt)
+    return (f'<div style="margin-top:10px;text-align:right;">'
+            f'<a href="{url}" target="_blank" rel="noopener noreferrer" '
+            f'style="display:inline-block;background:{GREEN_TINT};color:{GREEN_DARK};font-size:12px;font-weight:700;'
+            f'padding:4px 11px;border-radius:999px;text-decoration:none;">'
+            f'🤖 Full AI analysis on Gemini ↗</a></div>')
 
 
 # ====================== LAYOUT PIECES ======================
@@ -514,7 +568,7 @@ def _nextday_stock_card(row):
     return _linkify(card, symbol)
 
 
-def render_delivery_card(row, live=None):
+def render_delivery_card(row, live=None, news=None):
     """Clickable card for Delivery Combo results (FYERS deep-link).
 
     Single-line HTML (no blank lines) so Streamlit's markdown renders it
@@ -630,12 +684,14 @@ def render_delivery_card(row, live=None):
                      f'<span style="font-size:11.5px;font-weight:600;color:{MUTED};">\U0001F4E1 Live today</span>'
                      f'<span style="font-size:12.5px;font-weight:700;color:{c};">{arrow} {mv} · {status}</span></div>')
 
-    card = (f'<div class="opl-card {side}">'
-            f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+    main = (f'<div style="display:flex;justify-content:space-between;align-items:center;">'
             f'<div><span class="opl-sym">{symbol}</span><span class="opl-ext">\u2197</span></div>'
             f'<div style="display:flex;align-items:center;gap:8px;">{ltp_html}{_chip(direction, tone)}</div></div>'
-            f'{meter}{chips_row}{live_html}</div>')
-    return _linkify(card, symbol)
+            f'{meter}{chips_row}{live_html}')
+
+    card = (f'<div class="opl-card {side}">{fyers_wrap(symbol, main)}'
+            f'{news_links(news)}{gemini_ai_link(symbol)}</div>')
+    return card
 
 
 def _section_head(emoji, label, count, tone):

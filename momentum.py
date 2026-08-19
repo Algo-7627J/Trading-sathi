@@ -31,8 +31,9 @@ from delivery import fetch_delivery_frame, delivery_map, delivery_date
 from ui_helpers import (
     GREEN, GREEN_DARK, RED, RED_DARK, MUTED, INK,
     GRAY_TINT, GREEN_TINT, NEUT_BAR, BORDER,
-    _fmt_money, _chip, fyers_chart_link,
+    _fmt_money, _chip,
     genuineness_chip, delivery_line,
+    fyers_wrap, news_links, gemini_ai_link,
 )
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -350,58 +351,6 @@ def _analysis_box(text):
             f'font-size:12.5px;color:{INK};line-height:1.55;">\U0001F4A1 {_html.escape(str(text))}</div>')
 
 
-def _fyers_main_link(symbol):
-    """Open/close <a> tags wrapping the main card body (FYERS chart deep-link).
-
-    Returns (open_tag, close_tag). Kept OUTSIDE the news/Gemini links so we
-    never nest anchors (invalid HTML breaks the whole card)."""
-    link = fyers_chart_link(symbol)
-    if not link:
-        return "", ""
-    safe = _html.escape(str(link), quote=True)
-    sym_safe = _html.escape(str(symbol))
-    return (f'<a href="{safe}" target="_blank" rel="noopener noreferrer" '
-            f'title="Open {sym_safe} chart on FYERS \u2197" class="opl-link" '
-            f'style="text-decoration:none;color:inherit;">'), "</a>"
-
-
-def _news_line(news):
-    """Each headline as its OWN clickable link to the article (Google News)."""
-    if not news:
-        return ""
-    items = ""
-    for n in news[:2]:
-        title = n["title"] if isinstance(n, dict) else str(n)
-        link = (n.get("link") or "") if isinstance(n, dict) else ""
-        t = _html.escape(str(title))
-        if link:
-            l = _html.escape(str(link), quote=True)
-            item = (f'<a href="{l}" target="_blank" rel="noopener noreferrer" title="{t}" '
-                    f'style="color:{INK};text-decoration:none;border-bottom:1px dotted {BORDER};">'
-                    f'{t} \u2197</a>')
-        else:
-            item = t
-        items += (f'<div style="font-size:11.5px;color:{MUTED};margin-top:4px;">'
-                  f'\U0001F4F0 {item}</div>')
-    return items
-
-
-def _gemini_link(symbol):
-    """\"Full AI analysis on Gemini\" deep-link — opens Google AI Studio (free Gemini,
-    no API key, Google sign-in) with a pre-filled analysis prompt for the stock."""
-    from urllib.parse import quote
-    prompt = (f"Give a complete technical and fundamental analysis of {symbol} (NSE, India): "
-              f"current trend and momentum, key support/resistance levels, delivery percentage and volume context, "
-              f"recent news and results, and the most likely reasons behind its recent price move. "
-              f"End with a short risk summary. Do not give buy/sell advice.")
-    url = "https://aistudio.google.com/prompts/new_chat?prompt=" + quote(prompt)
-    return (f'<div style="margin-top:10px;text-align:right;">'
-            f'<a href="{url}" target="_blank" rel="noopener noreferrer" '
-            f'style="display:inline-block;background:{GREEN_TINT};color:{GREEN_DARK};font-size:12px;font-weight:700;'
-            f'padding:4px 11px;border-radius:999px;text-decoration:none;">'
-            f'\U0001F916 Full AI analysis on Gemini \u2197</a></div>')
-
-
 def _meta_line(dp, genuineness):
     dl = delivery_line(dp)
     gc = genuineness_chip(genuineness) if genuineness else ""
@@ -428,9 +377,8 @@ def render_momentum_card(row, analysis=None, news=None):
             f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""))}'
             f'{_analysis_box(analysis)}')
 
-    op, cl = _fyers_main_link(symbol)
-    card = (f'<div class="opl-card {side}">{op}{main}{cl}'
-            f'{_news_line(news)}{_gemini_link(symbol)}</div>')
+    card = (f'<div class="opl-card {side}">{fyers_wrap(symbol, main)}'
+            f'{news_links(news)}{gemini_ai_link(symbol)}</div>')
     return card
 
 
@@ -457,7 +405,6 @@ def render_streak_card(row, analysis=None, news=None):
             f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""))}'
             f'{_analysis_box(analysis)}')
 
-    op, cl = _fyers_main_link(symbol)
-    card = (f'<div class="opl-card {side}">{op}{main}{cl}'
-            f'{_news_line(news)}{_gemini_link(symbol)}</div>')
+    card = (f'<div class="opl-card {side}">{fyers_wrap(symbol, main)}'
+            f'{news_links(news)}{gemini_ai_link(symbol)}</div>')
     return card

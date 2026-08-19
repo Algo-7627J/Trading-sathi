@@ -150,7 +150,7 @@ from momentum import (
     scan_strong_direction, scan_consecutive,
     render_momentum_card, render_streak_card,
 )
-from ai_analysis import analyze_moves
+from ai_analysis import analyze_moves, get_news_bulk
 from pead import scan_pead, render_pead_card, pead_table
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
@@ -992,6 +992,22 @@ else:
 
                         view = st.radio("View Mode", ["Cards", "Table"], horizontal=True, key="delivery_view")
 
+                        # ---- news for combo stocks (cards only, cached) ----
+                        combo_syms = []
+                        for _d in (bull_top, bear_top):
+                            for _s in _d["Symbol"].dropna().astype(str).tolist():
+                                combo_syms.append(_s)
+                        combo_news = {}
+                        if view == "Cards" and combo_syms:
+                            if "delivery_news_cache" not in st.session_state:
+                                st.session_state.delivery_news_cache = {}
+                            _dnc = st.session_state.delivery_news_cache
+                            _missing = [s for s in combo_syms if s not in _dnc]
+                            if _missing:
+                                with st.spinner("Fetching news for combo stocks…"):
+                                    _dnc.update(get_news_bulk(_missing))
+                            combo_news = {s: _dnc.get(s, []) for s in combo_syms}
+
                         def _show(tbl, head):
                             if tbl.empty:
                                 st.caption("No stocks matching this filter.")
@@ -999,7 +1015,7 @@ else:
                             st.markdown(head, unsafe_allow_html=True)
                             if view == "Cards":
                                 for _, r in tbl.iterrows():
-                                    st.markdown(render_delivery_card(r), unsafe_allow_html=True)
+                                    st.markdown(render_delivery_card(r, news=combo_news.get(r["Symbol"], [])), unsafe_allow_html=True)
                             else:
                                 show = [c for c in ["Symbol", "DeliveryPct", "QtyTraded",
                                                     "DeliverableQty", "Signal", "Bias", "Outlook",
@@ -1083,7 +1099,7 @@ else:
                                 if view == "Cards":
                                     for _, r in tbl.iterrows():
                                         lv = live_map.get(r["Symbol"])
-                                        st.markdown(render_delivery_card(r, live=lv), unsafe_allow_html=True)
+                                        st.markdown(render_delivery_card(r, live=lv, news=combo_news.get(r["Symbol"], [])), unsafe_allow_html=True)
                                 else:
                                     disp = live_df[live_df["Symbol"].isin(tbl["Symbol"].tolist())].copy()
                                     disp = disp[["Symbol", "Direction", "DeliveryPct", "PrevClose", "LTP", "MovePct", "Status"]]
@@ -1330,6 +1346,19 @@ else:
 
                 view = st.radio("View Mode", ["Cards", "Table"], horizontal=True, key="pe_view", label_visibility="collapsed")
 
+                # ---- news for PEAD stocks (cards only, cached) ----
+                pe_news = {}
+                if view == "Cards":
+                    pe_syms = pe_df["Symbol"].dropna().astype(str).tolist()
+                    if "pead_news_cache" not in st.session_state:
+                        st.session_state.pead_news_cache = {}
+                    _pnc = st.session_state.pead_news_cache
+                    _pmissing = [s for s in pe_syms if s not in _pnc]
+                    if _pmissing:
+                        with st.spinner("Fetching news for results stocks…"):
+                            _pnc.update(get_news_bulk(_pmissing))
+                    pe_news = {s: _pnc.get(s, []) for s in pe_syms}
+
                 def _show_pead(tbl, head):
                     if tbl.empty:
                         st.caption("Nothing in this bucket.")
@@ -1337,7 +1366,7 @@ else:
                     st.markdown(head, unsafe_allow_html=True)
                     if view == "Cards":
                         for _, r in tbl.iterrows():
-                            st.markdown(render_pead_card(r), unsafe_allow_html=True)
+                            st.markdown(render_pead_card(r, news=pe_news.get(r["Symbol"], [])), unsafe_allow_html=True)
                     else:
                         st.dataframe(pead_table(tbl), use_container_width=True, hide_index=True)
 

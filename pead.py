@@ -22,7 +22,8 @@ from momentum import fetch_daily_history
 from ui_helpers import (
     GREEN, GREEN_DARK, RED, RED_DARK, MUTED, INK, HEADING,
     BORDER, GREEN_TINT, RED_TINT, GRAY_TINT, NEUT_BAR,
-    _fmt_money, _chip, _linkify,
+    _fmt_money, _chip,
+    fyers_wrap, news_links, gemini_ai_link,
 )
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -227,7 +228,8 @@ _PEAD_ICON = {
 }
 
 
-def render_pead_card(row):
+def render_pead_card(row, news=None):
+    """Clickable PEAD card: result quality + reaction + drift + news + Gemini link."""
     symbol = row["Symbol"]
     quality = str(row.get("Quality", "Mixed"))
     q_tone = _QUALITY_TONE.get(quality, "gray")
@@ -240,29 +242,28 @@ def render_pead_card(row):
     detail = row.get("QualityDetail", "")
     ed = row.get("EarningsDate", "")
 
-    d_txt = f"{drift:+.2f}%" if pd.notna(drift) else "—"
-    r_txt = f"{reaction:+.2f}%" if pd.notna(reaction) else "—"
+    d_txt = f"{drift:+.2f}%" if pd.notna(drift) else "\u2014"
+    r_txt = f"{reaction:+.2f}%" if pd.notna(reaction) else "\u2014"
     drift_col = GREEN_DARK if (drift or 0) >= 0 else RED_DARK
     react_col = GREEN_DARK if (reaction or 0) >= 0 else RED_DARK
+    icon = _PEAD_ICON.get(pead, "\u2796")
 
-    icon = _PEAD_ICON.get(pead, "➖")
+    main = (f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+            f'<div><span class="opl-sym">{symbol}</span><span class="opl-ext">\u2197</span>'
+            f'<span class="opl-sector">Results {ed}</span></div>'
+            f'<div style="display:flex;align-items:center;gap:8px;">{_chip(quality, q_tone)}'
+            f'<span class="opl-price">{ltp}</span></div></div>'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">'
+            f'<span style="font-size:12.5px;color:{MUTED};">Reaction <b style="color:{react_col};">{r_txt}</b>'
+            f'&nbsp;·&nbsp; Drift since results <b style="color:{drift_col};">{d_txt}</b>'
+            f'{" · " + str(days) + "d ago" if days is not None else ""}</span>'
+            f'{_chip(f"{icon} {pead}", pead_tone)}</div>'
+            f'<div style="font-size:12px;color:{MUTED};margin-top:7px;">{detail}</div>')
 
-    card = f"""
-    <div class="opl-card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span>
-                 <span class="opl-sector">Results {ed}</span></div>
-            <div>{_chip(quality, q_tone)}<span class="opl-price" style="margin-left:10px;">{ltp}</span></div>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-            <span style="font-size:12.5px; color:{MUTED};">Reaction <b style="color:{react_col};">{r_txt}</b>
-                 &nbsp;·&nbsp; Drift since results <b style="color:{drift_col};">{d_txt}</b>
-                 {('· ' + str(days) + 'd ago') if days is not None else ''}</span>
-            {_chip(f"{icon} {pead}", pead_tone)}
-        </div>
-        <div style="font-size:12px; color:{MUTED}; margin-top:7px;">{detail}</div>
-    </div>"""
-    return _linkify(card, symbol)
+    card = (f'<div class="opl-card">{fyers_wrap(symbol, main)}'
+            f'{news_links(news)}{gemini_ai_link(symbol)}</div>')
+    return card
+
 
 
 def pead_table(df):

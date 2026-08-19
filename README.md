@@ -134,6 +134,9 @@ note explaining the likely reason behind each move, combining:
    with a pre-filled analysis prompt for that stock. No key or extension
    needed.
 
+The same clickable-news-links + free Gemini button are also available on the
+**Delivery Combo** and **PEAD Tool** cards.
+
 ## PEAD Tool (Post-Earnings Announcement Drift)
 
 A tab ("📢 PEAD Tool") for stocks that have **already declared results**. For
