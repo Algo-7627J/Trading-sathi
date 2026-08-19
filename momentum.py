@@ -5,15 +5,21 @@
 # 2) CONSECUTIVE STREAK — stocks that have closed UP (or DOWN) for N
 #    consecutive trading days (persistent momentum).
 #
+# Each result now also carries:
+#   • Delivery % (NSE security-wise delivery) → "genuineness" of the move
+#   • RSI + volume ratio → overbought/oversold & participation context
+#   (these feed the AI-style analysis shown on the cards)
+#
 # Data: FYERS daily candles first, Yahoo Finance (yfinance) as an
 # automatic real-data fallback. A 10-minute in-memory cache avoids
 # re-fetching the same symbol across tabs.
 # ------------------------------------------------------------------
+import html as _html
 import time
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
-import streamlit as st
 
 try:
     import yfinance as yf
@@ -21,10 +27,12 @@ except Exception:
     yf = None
 
 from analysis import to_fyers_symbol
+from delivery import fetch_delivery_frame, delivery_map, delivery_date
 from ui_helpers import (
-    GREEN, GREEN_DARK, RED, RED_DARK, MUTED, INK, HEADING,
-    BORDER, GREEN_TINT, RED_TINT, GRAY_TINT, NEUT_BAR,
+    GREEN, GREEN_DARK, RED, RED_DARK, MUTED, INK,
+    GRAY_TINT, NEUT_BAR,
     _fmt_money, _chip, _linkify,
+    genuineness_chip, delivery_line,
 )
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -50,7 +58,6 @@ def _yf_daily(symbol, days=800):
         df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
         if df is None or df.empty:
             return None
-        # normalise columns (yfinance sometimes returns a MultiIndex)
         df = df.copy()
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
@@ -114,10 +121,7 @@ def _fyers_daily_with_dates(fyers, symbol, days=800):
 
 
 def fetch_daily_history(fyers, symbol):
-    """Daily OHLCV DataFrame with a 'date' column (FYERS first, yfinance fallback).
-
-    Returns None when neither source yields enough history.
-    """
+    """Daily OHLCV DataFrame with a 'date' column (FYERS first, yfinance fallback)."""
     now = time.time()
     hit = _CACHE.get(symbol)
     if hit and (now - hit[0]) < _CACHE_TTL:
@@ -140,7 +144,6 @@ def fetch_daily_history(fyers, symbol):
 
 # ====================== MOMENTUM / STREAK MATHS ======================
 def _pct_change(df, days_back):
-    """% change from `days_back` sessions ago to the latest close."""
     if df is None or len(df) <= days_back:
         return None
     base = float(df["c"].iloc[-(days_back + 1)])
@@ -169,10 +172,7 @@ def timeframes_momentum(df):
 
 
 def compute_streak(df):
-    """Return (streak_len, direction) of consecutive same-direction closes.
-
-    direction is 'up' | 'down' | 'flat'. A 'flat' close resets the streak.
-    """
+    """Return (streak_len, direction) of consecutive same-direction closes."""
     if df is None or len(df) < 2:
         return 0, "flat"
     closes = df["c"].astype(float)
@@ -193,9 +193,55 @@ def compute_streak(df):
     return streak, first
 
 
+# ====================== CONTEXT INDICATORS ======================
+def _rsi_series(close, n=14):
+    delta = close.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1 / n, adjust=False).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1 / n, adjust=False).mean()
+    rs = gain / loss.replace(0, np.nan)
+    return (100 - 100 / (1 + rs)).fillna(50.0)
+
+
+def _vol_ratio(df):
+    v = df["v"].astype(float)
+    last = float(v.iloc[-1])
+    avg = float(v.tail(21).mean())
+    return round(last / avg, 2) if avg > 0 else None
+
+
+def genuineness_label(pct):
+    """Conviction label from delivery % (direction-agnostic)."""
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if pd.isna(p):
+        return ""
+    if p >= 60:
+        return "Genuine Move"
+    if p >= 30:
+        return "Moderate Conviction"
+    return "Speculative"
+
+
+def _delivery_lookup():
+    """Fetch NSE delivery data once -> {SYMBOL: {...}} + latest date."""
+    try:
+        ddf = fetch_delivery_frame(force_refresh=False)
+        if ddf is None or ddf.empty:
+            return {}, ""
+        return delivery_map(ddf), delivery_date(ddf)
+    except Exception:
+        return {}, ""
+
+
 # ====================== SCANS ======================
 def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
-    """Stocks whose 1D / 1W / 1M momentum all point the same way."""
+    """Stocks whose 1D / 1W / 1M momentum all point the same way.
+
+    Extra columns: DeliveryPct, QtyTraded, DeliverableQty, Genuineness, RSI, VolRatio.
+    """
+    dmap, _ = _delivery_lookup()
     rows = []
     n = max(len(symbols), 1)
     for i, s in enumerate(symbols):
@@ -220,6 +266,10 @@ def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
                 direction = "Strong Down"
             else:
                 continue
+            info = dmap.get(s, {})
+            dp = info.get("pct")
+            rsi = float(_rsi_series(df["c"].astype(float)).iloc[-1])
+            vr = _vol_ratio(df)
             rows.append({
                 "Symbol": s,
                 "LTP": round(float(df["c"].iloc[-1]), 2),
@@ -228,6 +278,12 @@ def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
                 "1M %": round(m1, 2),
                 "Avg %": round((d1 + w1 + m1) / 3, 2),
                 "Direction": direction,
+                "DeliveryPct": dp,
+                "QtyTraded": info.get("qty"),
+                "DeliverableQty": info.get("delv"),
+                "Genuineness": genuineness_label(dp) if dp is not None else "",
+                "RSI": round(rsi, 1),
+                "VolRatio": vr,
             })
         except Exception:
             continue
@@ -235,7 +291,11 @@ def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
 
 
 def scan_consecutive(fyers, symbols, min_streak=5, progress=None):
-    """Stocks that closed up (or down) for >= min_streak consecutive days."""
+    """Stocks that closed up (or down) for >= min_streak consecutive days.
+
+    Extra columns: DeliveryPct, QtyTraded, DeliverableQty, Genuineness, RSI, VolRatio.
+    """
+    dmap, _ = _delivery_lookup()
     rows = []
     n = max(len(symbols), 1)
     for i, s in enumerate(symbols):
@@ -252,6 +312,10 @@ def scan_consecutive(fyers, symbols, min_streak=5, progress=None):
             start = float(closes.iloc[-1 - streak])
             end = float(closes.iloc[-1])
             move = (end / start - 1) * 100 if start else None
+            info = dmap.get(s, {})
+            dp = info.get("pct")
+            rsi = float(_rsi_series(closes).iloc[-1])
+            vr = _vol_ratio(df)
             rows.append({
                 "Symbol": s,
                 "LTP": round(end, 2),
@@ -259,23 +323,53 @@ def scan_consecutive(fyers, symbols, min_streak=5, progress=None):
                 "Direction": "Up" if direction == "up" else "Down",
                 "Streak Move %": round(move, 2) if move is not None else None,
                 "As Of": str(df["date"].iloc[-1]) if "date" in df.columns else "",
+                "DeliveryPct": dp,
+                "QtyTraded": info.get("qty"),
+                "DeliverableQty": info.get("delv"),
+                "Genuineness": genuineness_label(dp) if dp is not None else "",
+                "RSI": round(rsi, 1),
+                "VolRatio": vr,
             })
         except Exception:
             continue
     return pd.DataFrame(rows)
 
 
-# ====================== RENDER HELPERS (Groww style) ======================
+# ====================== RENDER HELPERS (single-line HTML, Groww style) ======================
 def _pct_cell(v, label):
     c = GREEN_DARK if v >= 0 else RED_DARK
-    return (
-        f'<div style="flex:1; text-align:center; background:{GRAY_TINT}; border-radius:8px; padding:6px 4px;">'
-        f'<div style="font-size:11px; color:{MUTED};">{label}</div>'
-        f'<div style="font-size:15px; font-weight:700; color:{c};">{v:+.2f}%</div></div>'
-    )
+    return (f'<div style="flex:1;text-align:center;background:{GRAY_TINT};border-radius:8px;padding:6px 4px;">'
+            f'<div style="font-size:11px;color:{MUTED};">{label}</div>'
+            f'<div style="font-size:15px;font-weight:700;color:{c};">{v:+.2f}%</div></div>')
 
 
-def render_momentum_card(row):
+def _analysis_box(text):
+    if not text:
+        return ""
+    return (f'<div style="margin-top:9px;background:{GRAY_TINT};border-radius:8px;padding:8px 11px;'
+            f'font-size:12.5px;color:{INK};line-height:1.55;">💡 {_html.escape(str(text))}</div>')
+
+
+def _news_line(news):
+    if not news:
+        return ""
+    items = ""
+    for n in news[:2]:
+        t = n["title"] if isinstance(n, dict) else str(n)
+        items += (f'<div style="font-size:11.5px;color:{MUTED};margin-top:3px;">📰 '
+                  f'{_html.escape(str(t))}</div>')
+    return items
+
+
+def _meta_line(dp, genuineness):
+    dl = delivery_line(dp)
+    gc = genuineness_chip(genuineness) if genuineness else ""
+    if not dl and not gc:
+        return ""
+    return f'<div style="display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap;">{dl}{gc}</div>'
+
+
+def render_momentum_card(row, analysis=None, news=None):
     symbol = row["Symbol"]
     d1, w1, m1 = row["1D %"], row["1W %"], row["1M %"]
     direction = str(row["Direction"])
@@ -284,20 +378,19 @@ def render_momentum_card(row):
     side = "bull" if is_up else "bear"
     ltp = _fmt_money(row.get("LTP")) if pd.notna(row.get("LTP")) else ""
 
-    card = f"""
-    <div class="opl-card {side}">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span></div>
-            <div>{_chip(direction, tone)}<span class="opl-price" style="margin-left:10px;">{ltp}</span></div>
-        </div>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-            {_pct_cell(d1, "1 Day")}{_pct_cell(w1, "1 Week")}{_pct_cell(m1, "1 Month")}
-        </div>
-    </div>"""
+    card = (f'<div class="opl-card {side}">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+            f'<div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span></div>'
+            f'<div style="display:flex;align-items:center;gap:8px;">{_chip(direction, tone)}'
+            f'<span class="opl-price">{ltp}</span></div></div>'
+            f'<div style="display:flex;gap:8px;margin-top:10px;">'
+            f'{_pct_cell(d1, "1 Day")}{_pct_cell(w1, "1 Week")}{_pct_cell(m1, "1 Month")}</div>'
+            f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""))}'
+            f'{_analysis_box(analysis)}{_news_line(news)}</div>')
     return _linkify(card, symbol)
 
 
-def render_streak_card(row):
+def render_streak_card(row, analysis=None, news=None):
     symbol = row["Symbol"]
     streak = int(row["Streak"])
     direction = str(row["Direction"])
@@ -309,15 +402,15 @@ def render_streak_card(row):
     ltp = _fmt_money(row.get("LTP")) if pd.notna(row.get("LTP")) else ""
     asof = row.get("As Of", "")
 
-    card = f"""
-    <div class="opl-card {side}">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span></div>
-            <div>{_chip(f"{streak} days {direction}", tone)}<span class="opl-price" style="margin-left:10px;">{ltp}</span></div>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:9px;">
-            <span style="font-size:12.5px; color:{MUTED};">{streak} consecutive {direction.lower()} closes{' · ' + asof if asof else ''}</span>
-            <span style="font-size:14px; font-weight:700; color:{GREEN_DARK if is_up else RED_DARK};">{move_txt}</span>
-        </div>
-    </div>"""
+    card = (f'<div class="opl-card {side}">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+            f'<div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span></div>'
+            f'<div style="display:flex;align-items:center;gap:8px;">{_chip(f"{streak}d {direction}", tone)}'
+            f'<span class="opl-price">{ltp}</span></div></div>'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:9px;">'
+            f'<span style="font-size:12.5px;color:{MUTED};">{streak} consecutive {direction.lower()} closes'
+            f'{" · " + asof if asof else ""}</span>'
+            f'<span style="font-size:14px;font-weight:700;color:{GREEN_DARK if is_up else RED_DARK};">{move_txt}</span></div>'
+            f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""))}'
+            f'{_analysis_box(analysis)}{_news_line(news)}</div>')
     return _linkify(card, symbol)

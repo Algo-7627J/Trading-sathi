@@ -18,6 +18,8 @@ RAO SAHAB ek Streamlit-based smart scanner hai jo intraday aur max 2-day holding
 - **Next-Day Outlook**: daily-candle based, backtested next-day direction calls
 - **Strong Direction (🧭)**: stocks whose momentum is aligned in the same direction across 1-Day, 1-Week & 1-Month timeframes
 - **Streak Movers (🔥)**: stocks closing up (or down) for N consecutive days
+- **AI-generated analysis**: every Strong Direction / Streak card now explains the *likely reason* behind the move (real LLM if a key is set, else a rule-based narrative) + latest news headlines (Google News)
+- **Delivery % on momentum cards**: NSE security-wise delivery shows the *genuineness* of the move — high delivery = conviction-backed, low = speculative intraday churn
 - **PEAD Tool (📢)**: Post-Earnings Announcement Drift — result quality (Good/Mixed/Bad) + whether the stock is still drifting after results
 - Persistent watchlist (add/remove symbols, dedicated results section)
 - Live auto-refresh scanning
@@ -100,11 +102,32 @@ All three green → **Strong Up**; all three red → **Strong Down**. A minimum
 move per timeframe (default 0.5%) filters out noise. Built from ~1 year of
 daily candles (FYERS first, Yahoo Finance as an automatic fallback).
 
+Each card also shows **Delivery %** (NSE security-wise delivery) with a
+genuineness badge — *Genuine Move* (≥60%), *Moderate Conviction* (30–60%) or
+*Speculative* (<30%) — plus an **AI analysis** paragraph and the latest news
+headlines.
+
 ## Streak Movers (Consecutive Closes)
 
 A tab ("🔥 Streak Movers") that finds stocks which have closed **UP** (or
 **DOWN**) for N days in a row (default 5). Persistent one-way closes flag
-strong momentum — and moves that may be getting over-extended.
+strong momentum — and moves that may be getting over-extended. Same delivery
+% + AI analysis + news enrichment as the Strong Direction cards.
+
+## AI Analysis (reason behind the move)
+
+The Strong Direction and Streak Movers cards generate a short analyst-style
+note explaining the likely reason behind each move, combining:
+
+1. **Real LLM** — when an API key is present in Streamlit secrets, one batched
+   call per scan explains every matched stock. Supported providers:
+   - `OPENAI_API_KEY` (optional `OPENAI_MODEL`, default `gpt-4o-mini`)
+   - `GEMINI_API_KEY` (optional `GEMINI_MODEL`, default `gemini-1.5-flash`)
+   - `ANTHROPIC_API_KEY` (optional `ANTHROPIC_MODEL`, default `claude-3-5-haiku-latest`)
+2. **Built-in fallback** — a rule-based narrative from momentum, delivery %,
+   RSI and volume (always available, no key needed).
+3. **News headlines** — latest Google News headlines for the stock (free RSS),
+   shown as the possible *trigger* for the move.
 
 ## PEAD Tool (Post-Earnings Announcement Drift)
 

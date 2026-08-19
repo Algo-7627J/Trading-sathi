@@ -150,6 +150,7 @@ from momentum import (
     scan_strong_direction, scan_consecutive,
     render_momentum_card, render_streak_card,
 )
+from ai_analysis import analyze_moves
 from pead import scan_pead, render_pead_card, pead_table
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
 from ui_helpers import (
@@ -1141,9 +1142,19 @@ else:
                 sd_df = scan_strong_direction(st.session_state.fyers, sd_chosen, min_move=sd_min, progress=prog)
                 prog.empty()
                 st.session_state.strong_direction_df = sd_df
+                if sd_df is not None and not sd_df.empty:
+                    with st.spinner("Fetching news & generating AI analysis…"):
+                        st.session_state.sd_analysis = analyze_moves(sd_df.to_dict("records"), kind="momentum")
+                else:
+                    st.session_state.sd_analysis = {}
 
             sd_df = st.session_state.get("strong_direction_df")
             if sd_df is not None and not sd_df.empty:
+                sd_analyses = st.session_state.get("sd_analysis", {})
+                st.caption("💡 **AI analysis** explains the likely reason behind each move (LLM if a key is set in "
+                           "secrets, else rule-based) + latest news headlines. **Delivery %** = genuineness of the "
+                           "move — high delivery = real conviction, low = speculative intraday churn.")
+
                 up = sd_df[sd_df["Direction"] == "Strong Up"].sort_values("Avg %", ascending=False)
                 down = sd_df[sd_df["Direction"] == "Strong Down"].sort_values("Avg %", ascending=True)
 
@@ -1161,7 +1172,8 @@ else:
                     st.caption("No strong-up stocks found at the current minimum move.")
                 elif view == "Cards":
                     for _, r in up.iterrows():
-                        st.markdown(render_momentum_card(r), unsafe_allow_html=True)
+                        a = sd_analyses.get(r["Symbol"], {})
+                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
                 else:
                     st.dataframe(up, use_container_width=True, hide_index=True)
 
@@ -1171,7 +1183,8 @@ else:
                     st.caption("No strong-down stocks found at the current minimum move.")
                 elif view == "Cards":
                     for _, r in down.iterrows():
-                        st.markdown(render_momentum_card(r), unsafe_allow_html=True)
+                        a = sd_analyses.get(r["Symbol"], {})
+                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
                 else:
                     st.dataframe(down, use_container_width=True, hide_index=True)
 
@@ -1213,9 +1226,19 @@ else:
                 sk_df = scan_consecutive(st.session_state.fyers, sk_chosen, min_streak=sk_min, progress=prog)
                 prog.empty()
                 st.session_state.streak_df = sk_df
+                if sk_df is not None and not sk_df.empty:
+                    with st.spinner("Fetching news & generating AI analysis…"):
+                        st.session_state.sk_analysis = analyze_moves(sk_df.to_dict("records"), kind="streak")
+                else:
+                    st.session_state.sk_analysis = {}
 
             sk_df = st.session_state.get("streak_df")
             if sk_df is not None and not sk_df.empty:
+                sk_analyses = st.session_state.get("sk_analysis", {})
+                st.caption("💡 **AI analysis** explains the likely reason behind each streak (LLM if a key is set in "
+                           "secrets, else rule-based) + latest news headlines. **Delivery %** = genuineness of the "
+                           "move — high delivery = real conviction, low = speculative intraday churn.")
+
                 up = sk_df[sk_df["Direction"] == "Up"].sort_values("Streak", ascending=False)
                 down = sk_df[sk_df["Direction"] == "Down"].sort_values("Streak", ascending=False)
 
@@ -1233,7 +1256,8 @@ else:
                     st.caption("No stocks with a consecutive up-streak at this length.")
                 elif view == "Cards":
                     for _, r in up.iterrows():
-                        st.markdown(render_streak_card(r), unsafe_allow_html=True)
+                        a = sk_analyses.get(r["Symbol"], {})
+                        st.markdown(render_streak_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
                 else:
                     st.dataframe(up, use_container_width=True, hide_index=True)
 
@@ -1243,7 +1267,8 @@ else:
                     st.caption("No stocks with a consecutive down-streak at this length.")
                 elif view == "Cards":
                     for _, r in down.iterrows():
-                        st.markdown(render_streak_card(r), unsafe_allow_html=True)
+                        a = sk_analyses.get(r["Symbol"], {})
+                        st.markdown(render_streak_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
                 else:
                     st.dataframe(down, use_container_width=True, hide_index=True)
 

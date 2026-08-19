@@ -395,6 +395,40 @@ def _flow_chip(flow):
             f"{flow}</span>")
 
 
+
+# ====================== GENUINENESS / DELIVERY BADGES ======================
+GENUINE = "#00875F"
+GENUINE_BG = "#E5F7F0"
+SPEC = "#B7791F"
+SPEC_BG = "#FDF3E7"
+
+
+def genuineness_chip(label):
+    """Conviction badge: Genuine (green) / Moderate (gray) / Speculative (amber)."""
+    g = str(label).lower()
+    if "genuine" in g:
+        return (f'<span style="display:inline-block;background:{GENUINE_BG};color:{GENUINE};'
+                f'font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;">✓ {label}</span>')
+    if "speculative" in g:
+        return (f'<span style="display:inline-block;background:{SPEC_BG};color:{SPEC};'
+                f'font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;">{label}</span>')
+    return (f'<span style="display:inline-block;background:{GRAY_TINT};color:{MUTED};'
+            f'font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;">{label}</span>')
+
+
+def delivery_line(pct):
+    """\"📦 Delivery 69.2%\" tinted by conviction level (for momentum/streak cards)."""
+    try:
+        p = float(pct)
+    except (TypeError, ValueError):
+        return ""
+    if pd.isna(p):
+        return ""
+    col = GENUINE if p >= 60 else (SPEC if p < 30 else MUTED)
+    return f'<span style="font-size:12px;color:{MUTED};">📦 Delivery <b style="color:{col};">{p:.1f}%</b></span>'
+
+
+
 def render_fii_dii_banner(fd):
     """Market-wide FII/DII net-flow banner for the Next-Day tab."""
     if not fd:
@@ -483,8 +517,9 @@ def _nextday_stock_card(row):
 def render_delivery_card(row, live=None):
     """Clickable card for Delivery Combo results (FYERS deep-link).
 
-    Clean Groww-style layout:
-      header (symbol + LTP + direction chip) → delivery meter → info chips → live strip.
+    Single-line HTML (no blank lines) so Streamlit's markdown renders it
+    reliably. Layout: header (symbol + LTP + direction chip) -> delivery
+    meter -> info chips (genuineness, signal, score/confidence, flow) -> live strip.
     """
     symbol = row.get("Symbol", "N/A")
     direction = str(row.get("Direction", "Neutral"))
@@ -502,13 +537,13 @@ def render_delivery_card(row, live=None):
     tone = _tone_for_signal(direction)          # Bullish->green, Bearish->red, Neutral->gray
     side = "bull" if tone == "green" else "bear" if tone == "red" else ""
 
-    # ---- delivery % (single source of truth, shown once) ----
+    # ---- delivery % (single source of truth) ----
     try:
         dp = float(delv_pct)
         dp_html = f"{dp:.1f}%"
         bar_w = max(0.0, min(dp, 100.0))
     except (TypeError, ValueError):
-        dp, dp_html, bar_w = None, "—", 0.0
+        dp, dp_html, bar_w = None, "\u2014", 0.0
     bar_col = GREEN if tone == "green" else RED if tone == "red" else "#C9CDD4"
 
     # ---- LTP ----
@@ -520,33 +555,30 @@ def render_delivery_card(row, live=None):
         except (TypeError, ValueError):
             pass
 
-    # ---- delivery meter (label + value, bar, delivered/traded caption) ----
-    qty_html = ""
+    # ---- delivered / traded caption ----
+    qty_txt = ""
     if qty is not None and delv_qty is not None:
         try:
             if pd.notna(qty) and pd.notna(delv_qty):
-                qty_html = (
-                    f'<div style="font-size:11px; color:{MUTED}; margin-top:4px;">'
-                    f'Delivered <b style="color:{INK}; font-weight:600;">{_fmt_qty(delv_qty)}</b>'
-                    f' &nbsp;·&nbsp; Traded <b style="color:{INK}; font-weight:600;">{_fmt_qty(qty)}</b></div>'
-                )
+                qty_txt = (f'<div style="font-size:11px;color:{MUTED};margin-top:4px;">Delivered '
+                           f'<b style="color:{INK};font-weight:600;">{_fmt_qty(delv_qty)}</b>&nbsp;·&nbsp;Traded '
+                           f'<b style="color:{INK};font-weight:600;">{_fmt_qty(qty)}</b></div>')
         except (TypeError, ValueError):
             pass
 
-    meter = f"""
-    <div style="margin-top:11px;">
-        <div style="display:flex; justify-content:space-between; align-items:baseline;">
-            <span style="font-size:11.5px; font-weight:700; letter-spacing:.5px; color:{MUTED};">📦 DELIVERY</span>
-            <span style="font-size:17px; font-weight:800; color:{bar_col};">{dp_html}</span>
-        </div>
-        <div style="margin-top:4px; background:{NEUT_BAR}; border-radius:999px; height:7px;">
-            <div style="width:{bar_w}%; background:{bar_col}; height:7px; border-radius:999px;"></div>
-        </div>
-        {qty_html}
-    </div>"""
+    # ---- delivery meter ----
+    meter = (f'<div style="margin-top:11px;">'
+             f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+             f'<span style="font-size:11.5px;font-weight:700;letter-spacing:.5px;color:{MUTED};">\U0001F4E6 DELIVERY</span>'
+             f'<span style="font-size:17px;font-weight:800;color:{bar_col};">{dp_html}</span></div>'
+             f'<div style="margin-top:4px;background:{NEUT_BAR};border-radius:999px;height:7px;">'
+             f'<div style="width:{bar_w}%;background:{bar_col};height:7px;border-radius:999px;"></div></div>'
+             f'{qty_txt}</div>')
 
-    # ---- info chips (signal, score/confidence, last-30min flow) ----
+    # ---- info chips ----
     chips = []
+    if dp is not None:
+        chips.append(genuineness_chip("Genuine Move" if dp >= 60 else ("Moderate Conviction" if dp >= 30 else "Speculative")))
 
     sig_clean = str(signal).strip()
     if sig_clean and sig_clean.lower() not in (direction.lower(), "nan", "none", ""):
@@ -557,39 +589,29 @@ def render_delivery_card(row, live=None):
             if pd.notna(score):
                 sval = float(score)
                 mcol = GREEN_DARK if sval >= 0 else RED_DARK
-                chips.append(
-                    f'<span style="display:inline-block; background:{GRAY_TINT}; border-radius:999px;'
-                    f' padding:2px 9px; font-size:12px; color:{MUTED}; white-space:nowrap;">'
-                    f'Score <b style="color:{mcol};">{sval:+.1f}</b></span>'
-                )
+                chips.append(f'<span style="display:inline-block;background:{GRAY_TINT};border-radius:999px;padding:2px 9px;font-size:12px;color:{MUTED};white-space:nowrap;">Score <b style="color:{mcol};">{sval:+.1f}</b></span>')
         except (TypeError, ValueError):
             pass
     elif conf is not None:
         try:
             if pd.notna(conf):
                 cval = int(float(conf))
-                chips.append(
-                    f'<span style="display:inline-block; background:{GRAY_TINT}; border-radius:999px;'
-                    f' padding:2px 9px; font-size:12px; color:{MUTED}; white-space:nowrap;">'
-                    f'Conf <b style="color:{INK};">{cval}%</b></span>'
-                )
+                chips.append(f'<span style="display:inline-block;background:{GRAY_TINT};border-radius:999px;padding:2px 9px;font-size:12px;color:{MUTED};white-space:nowrap;">Conf <b style="color:{INK};">{cval}%</b></span>')
         except (TypeError, ValueError):
             pass
 
     if flow and str(flow) not in ("", "N/A", "nan", "Skipped"):
         flow_pill = _flow_chip(flow)
-        if flow_detail and str(flow_detail) not in ("", "—", "nan"):
-            flow_pill += f'<span style="font-size:11px; color:{MUTED};">{flow_detail}</span>'
+        if flow_detail and str(flow_detail) not in ("", "\u2014", "nan"):
+            flow_pill += f'<span style="font-size:11px;color:{MUTED};">{flow_detail}</span>'
         chips.append(flow_pill)
 
     chips_row = ""
     if chips:
-        chips_row = (
-            '<div style="display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap;">'
-            + "".join(chips) + "</div>"
-        )
+        chips_row = ('<div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;">'
+                     + "".join(chips) + '</div>')
 
-    # ---- live-session strip (only when a live check ran) ----
+    # ---- live-session strip ----
     live_html = ""
     if live:
         status = live.get("Status", "")
@@ -599,27 +621,20 @@ def render_delivery_card(row, live=None):
         bg = GREEN_TINT if ltone == "green" else RED_TINT if ltone == "red" else GRAY_TINT
         brd = "#BFE9D8" if ltone == "green" else "#F3CDC2" if ltone == "red" else BORDER
         if move is not None:
-            arrow = "▲" if move > 0 else "▼" if move < 0 else "•"
+            arrow = "\u25B2" if move > 0 else "\u25BC" if move < 0 else "\u2022"
             mv = f"{move:+.2f}%"
         else:
-            arrow, mv = "•", "—"
-        live_html = (
-            f'<div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between;'
-            f' background:{bg}; border:1px solid {brd}; border-radius:8px; padding:6px 11px;">'
-            f'<span style="font-size:11.5px; font-weight:600; color:{MUTED};">📡 Live today</span>'
-            f'<span style="font-size:12.5px; font-weight:700; color:{c};">{arrow} {mv} · {status}</span></div>'
-        )
+            arrow, mv = "\u2022", "\u2014"
+        live_html = (f'<div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;'
+                     f'background:{bg};border:1px solid {brd};border-radius:8px;padding:6px 11px;">'
+                     f'<span style="font-size:11.5px;font-weight:600;color:{MUTED};">\U0001F4E1 Live today</span>'
+                     f'<span style="font-size:12.5px;font-weight:700;color:{c};">{arrow} {mv} · {status}</span></div>')
 
-    card = f"""
-    <div class="opl-card {side}">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div><span class="opl-sym">{symbol}</span><span class="opl-ext">↗</span></div>
-            <div style="display:flex; align-items:center; gap:8px;">{ltp_html}{_chip(direction, tone)}</div>
-        </div>
-        {meter}
-        {chips_row}
-        {live_html}
-    </div>"""
+    card = (f'<div class="opl-card {side}">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+            f'<div><span class="opl-sym">{symbol}</span><span class="opl-ext">\u2197</span></div>'
+            f'<div style="display:flex;align-items:center;gap:8px;">{ltp_html}{_chip(direction, tone)}</div></div>'
+            f'{meter}{chips_row}{live_html}</div>')
     return _linkify(card, symbol)
 
 
