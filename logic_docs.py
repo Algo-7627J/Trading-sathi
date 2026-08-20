@@ -101,6 +101,10 @@ LOGIC_METALS = """**What it does:** multi-timeframe forecast for Gold & Silver C
 **How to read it:** strongest setups = all 5 arrows pointing the same way **and** a volume-confirmed breakout.
 If Yahoo is unreachable, the panel is clearly marked *SIMULATED*.
 
+**🇮🇳 Jaipur INR rates:** the tab also shows today's **Jaipur bullion rates in rupees** — 24K & 22K gold
+per 10 gram and silver per kg, with the day's change and a 7-day trend (source: GoodReturns city pages,
+cached 3 h). If that source is unreachable, rates are **derived from COMEX × USD/INR** and clearly marked.
+
 **🤖 AI analysis (under each panel):** a rule-based analyst note (LLM if a key is set in secrets) explains
 the *likely reason* behind gold/silver's move — using the consensus score, breakout state, RSI, ATR and
 support/resistance — plus **fresh news headlines (≤7 days)** as the possible trigger, and a free Gemini

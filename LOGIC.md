@@ -79,6 +79,9 @@ Data: Yahoo Finance COMEX futures (`GC=F`, `SI=F`).
 6. **🤖 AI analysis** (har panel ke neeche): rule-based analyst note (ya LLM, agar secret key hai) jo
    consensus, breakout state, RSI, ATR aur support/resistance se move ki *likely reason* likhta hai +
    **fresh news headlines (≤7 din)** possible trigger ke roop mein + free Gemini deep-link.
+7. **🇮🇳 Jaipur INR rates**: tab mein aaj ke **Jaipur bullion rates** bhi dikhte hain — 24K/22K gold
+   per 10 gram aur silver per kg, din ka change aur 7-din ka trend (source: GoodReturns city pages,
+   3h cache). Source fail ho toh **COMEX × USD/INR se derived** rates, clearly marked.
 
 > Strongest setup = sab 5 arrows same direction **aur** volume-confirmed breakout.
 

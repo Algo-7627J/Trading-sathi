@@ -1192,3 +1192,99 @@ def render_metal_ai_card(rep, analysis=None, news=None):
         {gemini_ai_link(name, prompt=gemini_prompt)}
     </div>
     """, unsafe_allow_html=True)
+
+
+# ====================== JAIPUR BULLION RATES (INR) ======================
+def _inr_fmt(n):
+    """Indian-style number grouping: 159420 -> '1,59,420'."""
+    try:
+        s = str(int(n))
+    except (TypeError, ValueError):
+        return "—"
+    if len(s) <= 3:
+        return s
+    head, tail = s[:-3], s[-3:]
+    groups = []
+    while head:
+        groups.append(head[-2:])
+        head = head[:-2]
+    return ",".join(reversed(groups)) + "," + tail
+
+
+def _chg_chip(chg):
+    if chg is None:
+        return '<span class="chip chip-gray">—</span>'
+    if chg >= 0:
+        return f'<span class="chip chip-green">▲ ₹{_inr_fmt(chg)}</span>'
+    return f'<span class="chip chip-red">▼ ₹{_inr_fmt(abs(chg))}</span>'
+
+
+def render_jaipur_rates_card(rates):
+    """🇮🇳 Today's Jaipur gold/silver INR rates (per 10g / per kg)."""
+    date = rates.get("date", "Today")
+    derived = rates.get("source") == "derived"
+    usd_inr = rates.get("usd_inr")
+
+    src_html = (
+        f'<span style="font-size:11px;color:{MUTED};">⚠️ Derived from COMEX × USD/INR'
+        f'{" (₹" + f"{usd_inr:,.2f}" + ")" if usd_inr else ""} — indicative, local '
+        f'premium may differ</span>'
+        if derived else
+        f'<a href="{rates.get("url", "#")}" target="_blank" rel="noopener noreferrer" '
+        f'style="font-size:11px;color:{MUTED};text-decoration:none;border-bottom:1px dotted {BORDER};">'
+        f'Source: GoodReturns · Jaipur ↗</a>'
+    )
+
+    def _tile(icon, label, val, chg, sub):
+        return (
+            f'<div style="flex:1;min-width:120px;background:{GRAY_TINT};border:1px solid {BORDER};'
+            f'border-radius:12px;padding:10px 12px;text-align:center;">'
+            f'<div style="font-size:11.5px;font-weight:800;letter-spacing:.5px;color:{MUTED};">'
+            f'{icon} {label}</div>'
+            f'<div style="font-size:21px;font-weight:800;color:{INK};margin-top:3px;">₹{_inr_fmt(val)}</div>'
+            f'<div style="font-size:10.5px;color:{MUTED};margin-top:1px;">{sub}</div>'
+            f'<div style="margin-top:5px;">{_chg_chip(chg)}</div></div>'
+        )
+
+    tiles = "".join([
+        _tile("🪙", "GOLD 24K", rates["gold_24k_10g"], rates.get("gold_24k_chg"), "per 10 gram"),
+        _tile("🪙", "GOLD 22K", rates["gold_22k_10g"], rates.get("gold_22k_chg"), "per 10 gram"),
+        _tile("🥈", "SILVER", rates["silver_kg"], rates.get("silver_chg"), "per 1 kg"),
+    ])
+
+    # 7-day trend table
+    hist = rates.get("history") or []
+    rows_html = ""
+    if hist:
+        for h in hist:
+            rows_html += (
+                f'<tr><td style="padding:4px 10px;">{html_escape(str(h.get("date", "")))}</td>'
+                f'<td style="padding:4px 10px;text-align:right;">₹{_inr_fmt(h.get("gold_24k"))}</td>'
+                f'<td style="padding:4px 10px;text-align:right;">₹{_inr_fmt(h.get("gold_22k"))}</td>'
+                f'<td style="padding:4px 10px;text-align:right;">₹{_inr_fmt(h.get("silver"))}</td></tr>'
+            )
+    details = (
+        f'<details style="margin-top:10px;font-size:12px;color:{MUTED};">'
+        f'<summary style="cursor:pointer;font-weight:700;color:{INK};">📅 7-day trend (Jaipur)</summary>'
+        f'<div style="overflow-x:auto;margin-top:6px;">'
+        f'<table style="border-collapse:collapse;width:100%;font-size:12px;color:{INK};">'
+        f'<tr style="color:{MUTED};font-size:11px;text-align:left;">'
+        f'<th style="padding:4px 10px;">Date</th>'
+        f'<th style="padding:4px 10px;text-align:right;">Gold 24K /10g</th>'
+        f'<th style="padding:4px 10px;text-align:right;">Gold 22K /10g</th>'
+        f'<th style="padding:4px 10px;text-align:right;">Silver /kg</th></tr>'
+        f'{rows_html}</table></div></details>'
+        if hist else ""
+    )
+
+    st.markdown(f"""
+    <div class="opl-card" style="padding:12px 14px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <span style="font-size:14px;font-weight:800;color:{HEADING};">🇮🇳 Jaipur Bullion Rates (INR)</span>
+            <span style="font-size:12px;color:{MUTED};font-weight:700;">{html_escape(str(date))}</span>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">{tiles}</div>
+        <div style="margin-top:8px;">{src_html}</div>
+        {details}
+    </div>
+    """, unsafe_allow_html=True)
