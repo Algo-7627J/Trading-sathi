@@ -28,6 +28,7 @@ except Exception:
 
 from analysis import to_fyers_symbol
 from delivery import fetch_delivery_frame, delivery_map, delivery_date
+from social_buzz import buzz_section_html
 from ui_helpers import (
     GREEN, GREEN_DARK, RED, RED_DARK, MUTED, INK,
     GRAY_TINT, GREEN_TINT, NEUT_BAR, BORDER,
@@ -359,7 +360,7 @@ def _meta_line(dp, genuineness):
     return f'<div style="display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap;">{dl}{gc}</div>'
 
 
-def render_momentum_card(row, analysis=None, news=None):
+def render_momentum_card(row, analysis=None, news=None, buzz=None):
     symbol = row["Symbol"]
     d1, w1, m1 = row["1D %"], row["1W %"], row["1M %"]
     direction = str(row["Direction"])
@@ -378,11 +379,11 @@ def render_momentum_card(row, analysis=None, news=None):
             f'{_analysis_box(analysis)}')
 
     card = (f'<div class="opl-card {side}">{fyers_wrap(symbol, main)}'
-            f'{news_links(news)}{gemini_ai_link(symbol)}</div>')
+            f'{news_links(news)}{buzz_section_html(buzz)}{gemini_ai_link(symbol)}</div>')
     return card
 
 
-def render_streak_card(row, analysis=None, news=None):
+def render_streak_card(row, analysis=None, news=None, buzz=None):
     symbol = row["Symbol"]
     streak = int(row["Streak"])
     direction = str(row["Direction"])
@@ -406,5 +407,5 @@ def render_streak_card(row, analysis=None, news=None):
             f'{_analysis_box(analysis)}')
 
     card = (f'<div class="opl-card {side}">{fyers_wrap(symbol, main)}'
-            f'{news_links(news)}{gemini_ai_link(symbol)}</div>')
+            f'{news_links(news)}{buzz_section_html(buzz)}{gemini_ai_link(symbol)}</div>')
     return card

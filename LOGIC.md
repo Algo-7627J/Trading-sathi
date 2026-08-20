@@ -170,7 +170,30 @@ Post-Earnings Announcement Drift — un stocks ke liye jinhone **results declare
 
 ---
 
-## 12. Data Sources & Fallbacks
+## 12. 💬 Social Buzz (Tab 10 + cards on Tabs 7, 8)
+
+**Sources (sab free, koi API key nahi chahiye):**
+1. **Reddit** — Indian trading subreddits (r/IndianStreetBets, r/IndiaInvestments, r/StockMarketIndia,
+   r/DalalStreetTalks, …) mein symbol ki recent posts/comments.
+2. **Google News "social"** — headlines jahan stock twitter/social media par discuss ho raha tha
+   ("viral", "trending", "twitter"). Tweets jo news ban gaye unhe pakad leta hai.
+3. **X (Twitter) v2 API** — real tweets, sirf tab chalti hai jab `X_BEARER_TOKEN` Streamlit secrets
+   mein ho (optional upgrade; upar wale do sources bina kisi key ke chalte hain).
+
+**Sentiment** — simple bullish/bearish lexicon (buy/breakout/rally vs sell/crash/downgrade + Hinglish
+market slang) har post/headline par tone chip lagata hai. Tab 🟢/🔴/⚪ tallies dikhata hai.
+
+**Cards par** — Strong Direction & Streak cards par compact **💬 SOCIAL BUZZ** strip (top 2 items +
+bullish/bearish tally) — move ka *possible trigger*. Sirf top 8 symbols ke liye fetch hota hai
+(capped, 10-min cache) taaki scan fast rahe. Sidebar se on/off.
+
+**Golden rule:** buzz **sirf informational** hai — score/signal kabhi nahi badalta. Aur har source
+best-effort hai: Reddit kuch cloud IPs block karta hai, toh app "source unreachable" bata deta hai
+bajaye chupchaap khaali dikhane ke.
+
+---
+
+## 13. Data Sources & Fallbacks
 
 | Data | Source | Fallback |
 |---|---|---|
@@ -181,6 +204,7 @@ Post-Earnings Announcement Drift — un stocks ke liye jinhone **results declare
 | Fundamentals/results | Screener.in | — (N/A) |
 | Earnings dates/estimates | Yahoo Finance | — (skip) |
 | News headlines | Google News RSS | — |
+| Social buzz | Reddit JSON + Google News RSS | X API (agar key ho) |
 | Gold/Silver | Yahoo Finance (COMEX) | SIMULATED badge |
 
 **Golden rule:** jab koi source fail ho, sections ya toh agla source try karte hain, ya result ko

@@ -151,6 +151,9 @@ from momentum import (
     render_momentum_card, render_streak_card,
 )
 from ai_analysis import analyze_moves, get_news_bulk
+from social_buzz import (
+    fetch_buzz, fetch_buzz_bulk, buzz_item_html, buzz_sources_note, reddit_hot,
+)
 from logic_docs import LOGIC, render_logic_expander
 from pead import scan_pead, render_pead_card, pead_table
 from storage import ensure_data_files, save_latest_scan, append_signal_history, load_watchlist
@@ -181,6 +184,8 @@ with st.sidebar:
               help="Premium Su-30 MKI fighter-jet backdrop. Turns on a dark theme so the text stays readable.")
     st.toggle("\U0001F319 Dark Mode", key="dark_mode",
               help="Light / dark content theme. (Auto-dark when the Su-30 background is on.)")
+    st.toggle("\U0001F4AC Social Buzz on cards", key="buzz_on_cards",
+              help="Show recent Reddit/news chatter as possible move-triggers on Strong Direction & Streak cards.")
 
 # ====================== PERSISTENT FYERS LOGIN (Cookie - 12 hours) ======================
 # This restores FYERS session from browser cookie so you don't generate auth_code again and again.
@@ -296,6 +301,11 @@ defaults = {
     "run_pead_scan": False,
     "dark_mode": False,
     "jet_bg": True,
+    "buzz_on_cards": True,
+    "sd_buzz": {},
+    "sk_buzz": {},
+    "buzz_result": None,
+    "trending_buzz": None,
 }
 
 for k, v in defaults.items():
@@ -490,10 +500,11 @@ else:
         ])
 
         watchlist = load_watchlist()
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
             "⚡ Intraday Scanner", "📅 Next-Day Outlook", "🏭 Sector Trend",
             "🥇 Gold & Silver", "🎯 Accuracy Report", "📦 Delivery Combo",
             "🧭 Strong Direction", "🔥 Streak Movers", "📢 PEAD Tool",
+            "💬 Social Buzz",
         ])
 
         # ==================== TAB 1: INTRADAY ====================
@@ -1188,12 +1199,24 @@ else:
                         st.session_state.sd_analysis = analyze_moves(sd_df.to_dict("records"), kind="momentum")
                 else:
                     st.session_state.sd_analysis = {}
+                # 💬 Social buzz for the top movers (possible move-triggers).
+                if st.session_state.get("buzz_on_cards", True) and sd_df is not None and not sd_df.empty:
+                    try:
+                        top_syms = list(sd_df["Symbol"].astype(str).head(8))
+                        with st.spinner("Fetching social buzz (Reddit + news)…"):
+                            st.session_state.sd_buzz = fetch_buzz_bulk(top_syms, per_source=3)
+                    except Exception:
+                        st.session_state.sd_buzz = {}
+                else:
+                    st.session_state.sd_buzz = {}
 
             sd_df = st.session_state.get("strong_direction_df")
             if sd_df is not None and not sd_df.empty:
                 sd_analyses = st.session_state.get("sd_analysis", {})
+                sd_buzz = st.session_state.get("sd_buzz", {})
                 st.caption("💡 **AI analysis** explains the likely reason behind each move (LLM if a key is set in "
-                           "secrets, else rule-based) + latest news headlines. **Delivery %** = genuineness of the "
+                           "secrets, else rule-based) + latest news headlines. **💬 Social Buzz** flags what people "
+                           "are saying on Reddit/news as possible triggers. **Delivery %** = genuineness of the "
                            "move — high delivery = real conviction, low = speculative intraday churn.")
 
                 up = sd_df[sd_df["Direction"] == "Strong Up"].sort_values("Avg %", ascending=False)
@@ -1214,7 +1237,8 @@ else:
                 elif view == "Cards":
                     for _, r in up.iterrows():
                         a = sd_analyses.get(r["Symbol"], {})
-                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
+                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news"),
+                                                         buzz=sd_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
                 else:
                     st.dataframe(up, use_container_width=True, hide_index=True)
 
@@ -1225,7 +1249,8 @@ else:
                 elif view == "Cards":
                     for _, r in down.iterrows():
                         a = sd_analyses.get(r["Symbol"], {})
-                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
+                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news"),
+                                                         buzz=sd_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
                 else:
                     st.dataframe(down, use_container_width=True, hide_index=True)
 
@@ -1274,12 +1299,24 @@ else:
                         st.session_state.sk_analysis = analyze_moves(sk_df.to_dict("records"), kind="streak")
                 else:
                     st.session_state.sk_analysis = {}
+                # 💬 Social buzz for the top streakers (possible move-triggers).
+                if st.session_state.get("buzz_on_cards", True) and sk_df is not None and not sk_df.empty:
+                    try:
+                        top_syms = list(sk_df["Symbol"].astype(str).head(8))
+                        with st.spinner("Fetching social buzz (Reddit + news)…"):
+                            st.session_state.sk_buzz = fetch_buzz_bulk(top_syms, per_source=3)
+                    except Exception:
+                        st.session_state.sk_buzz = {}
+                else:
+                    st.session_state.sk_buzz = {}
 
             sk_df = st.session_state.get("streak_df")
             if sk_df is not None and not sk_df.empty:
                 sk_analyses = st.session_state.get("sk_analysis", {})
+                sk_buzz = st.session_state.get("sk_buzz", {})
                 st.caption("💡 **AI analysis** explains the likely reason behind each streak (LLM if a key is set in "
-                           "secrets, else rule-based) + latest news headlines. **Delivery %** = genuineness of the "
+                           "secrets, else rule-based) + latest news headlines. **💬 Social Buzz** flags what people "
+                           "are saying on Reddit/news as possible triggers. **Delivery %** = genuineness of the "
                            "move — high delivery = real conviction, low = speculative intraday churn.")
 
                 up = sk_df[sk_df["Direction"] == "Up"].sort_values("Streak", ascending=False)
@@ -1300,7 +1337,8 @@ else:
                 elif view == "Cards":
                     for _, r in up.iterrows():
                         a = sk_analyses.get(r["Symbol"], {})
-                        st.markdown(render_streak_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
+                        st.markdown(render_streak_card(r, analysis=a.get("analysis"), news=a.get("news"),
+                                                       buzz=sk_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
                 else:
                     st.dataframe(up, use_container_width=True, hide_index=True)
 
@@ -1311,7 +1349,8 @@ else:
                 elif view == "Cards":
                     for _, r in down.iterrows():
                         a = sk_analyses.get(r["Symbol"], {})
-                        st.markdown(render_streak_card(r, analysis=a.get("analysis"), news=a.get("news")), unsafe_allow_html=True)
+                        st.markdown(render_streak_card(r, analysis=a.get("analysis"), news=a.get("news"),
+                                                       buzz=sk_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
                 else:
                     st.dataframe(down, use_container_width=True, hide_index=True)
 
@@ -1417,6 +1456,94 @@ else:
                 st.info("No recent reported earnings found for the scanned symbols.")
             else:
                 st.info("👆 Click **Run PEAD Scan** to find stocks with recent results and check whether they're still drifting.")
+
+        # ==================== TAB 10: SOCIAL BUZZ ====================
+        with tab10:
+            render_logic_expander("📖 How Social Buzz works", LOGIC["social"])
+            section_label("💬 Social Buzz — what people are saying")
+            st.caption("Recent Reddit chatter & social-media news for any symbol — the kind of talk that often "
+                       "**triggers or explains** a move. Free sources, informational only (does not change scores).")
+
+            bc1, bc2 = st.columns([2, 1])
+            with bc1:
+                quick = st.selectbox(
+                    "Quick pick", ["— Type a symbol below —"] + uni["all"],
+                    key="buzz_quick_pick",
+                    help="Pick from the scan universe (F&O stocks, indices, commodities) or type below.",
+                )
+            with bc2:
+                buzz_sym = st.text_input(
+                    "Symbol", value="TATAMOTORS", key="buzz_sym_input",
+                    help="NSE symbol (e.g. RELIANCE, TATAMOTORS, HDFCBANK) or an index/commodity (NIFTY50, GOLD).",
+                )
+            buzz_query = buzz_sym if quick.startswith("—") else quick
+            bb1, bb2 = st.columns([1, 3])
+            with bb1:
+                buzz_force = st.checkbox("Ignore 10-min cache", key="buzz_force")
+            with bb2:
+                st.caption("")  # spacing
+
+            if st.button("🔍 Fetch Buzz", type="primary", use_container_width=True, key="run_buzz"):
+                st.session_state.buzz_result = None
+                with st.spinner(f"Fetching social buzz for {buzz_query.upper()}…"):
+                    st.session_state.buzz_result = fetch_buzz(buzz_query, force=buzz_force)
+
+            buzz_res = st.session_state.get("buzz_result")
+            if buzz_res:
+                c = buzz_res["counts"]
+                b1, b2, b3, b4 = st.columns(4)
+                with b1:
+                    render_count_tile("MENTIONS", c["total"], "gray", "💬")
+                with b2:
+                    render_count_tile("BULLISH", c["bull"], "green", "🟢")
+                with b3:
+                    render_count_tile("BEARISH", c["bear"], "red", "🔴")
+                with b4:
+                    render_count_tile("ENGAGEMENT", buzz_res["engagement"], "gray", "👍")
+
+                note = buzz_sources_note(buzz_res)
+                if note:
+                    st.caption(note)
+
+                items = buzz_res["items"]
+                if items:
+                    for it in items[:15]:
+                        st.markdown(buzz_item_html(it), unsafe_allow_html=True)
+                    if len(items) > 15:
+                        st.caption(f"… and {len(items) - 15} more. Download the CSV for the full list.")
+                    _buf = []
+                    for it in items:
+                        _buf.append({
+                            "Symbol": buzz_res["symbol"],
+                            "Source": it["source"],
+                            "Title": it["title"],
+                            "Snippet": it["snippet"],
+                            "Tone": it["tone"],
+                            "Score": it["score"],
+                            "Comments": it["comments"],
+                            "URL": it["url"],
+                        })
+                    st.download_button(
+                        "⬇️ Download Buzz CSV",
+                        pd.DataFrame(_buf).to_csv(index=False).encode(),
+                        f"social_buzz_{buzz_res['symbol']}.csv",
+                        "text/csv",
+                    )
+                else:
+                    st.info("😴 No recent mentions found for this symbol. Try a more active large-cap name, "
+                            "or check back later — some sources block cloud servers and recover on their own.")
+
+            st.divider()
+            section_label("🔥 Trending on r/IndianStreetBets")
+            if st.button("🔄 Load Trending Posts", key="buzz_trending", use_container_width=True):
+                st.session_state.trending_buzz = reddit_hot(limit=8) or []
+            trending = st.session_state.get("trending_buzz")
+            if trending:
+                for it in trending:
+                    st.markdown(buzz_item_html(it), unsafe_allow_html=True)
+            elif trending == []:
+                st.caption("No posts returned — Reddit may be blocking this server's IP. "
+                           "Symbol search still works via Google News.")
 
     except Exception as e:
         st.error(f"App Error: {e}")
