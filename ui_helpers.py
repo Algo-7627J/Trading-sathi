@@ -462,13 +462,15 @@ def news_links(news, max_items=2):
     return items
 
 
-def gemini_ai_link(symbol):
+def gemini_ai_link(symbol, prompt=None):
     """\"🤖 Full AI analysis on Gemini\" deep-link — opens Google AI Studio (free
-    Gemini, no API key, Google sign-in) with a pre-filled stock-analysis prompt."""
-    prompt = (f"Give a complete technical and fundamental analysis of {symbol} (NSE, India): "
-              f"current trend and momentum, key support/resistance levels, delivery percentage and volume context, "
-              f"recent news and results, and the most likely reasons behind its recent price move. "
-              f"End with a short risk summary. Do not give buy/sell advice.")
+    Gemini, no API key, Google sign-in) with a pre-filled analysis prompt.
+    Pass `prompt` to override the default stock-analysis prompt."""
+    if prompt is None:
+        prompt = (f"Give a complete technical and fundamental analysis of {symbol} (NSE, India): "
+                  f"current trend and momentum, key support/resistance levels, delivery percentage and volume context, "
+                  f"recent news and results, and the most likely reasons behind its recent price move. "
+                  f"End with a short risk summary. Do not give buy/sell advice.")
     url = "https://aistudio.google.com/prompts/new_chat?prompt=" + quote(prompt)
     return (f'<div style="margin-top:10px;text-align:right;">'
             f'<a href="{url}" target="_blank" rel="noopener noreferrer" '
@@ -1156,3 +1158,37 @@ def render_commodity_panel(rep):
     with st.container(border=True):
         st.markdown("**🔮 Forecast**")
         st.markdown(rep["forecast"])
+
+
+# ====================== GOLD & SILVER — AI ANALYSIS CARD ======================
+def render_metal_ai_card(rep, analysis=None, news=None):
+    """🤖 AI analysis card shown under the Gold/Silver forecast panels.
+
+    Mirrors the AI box on momentum cards: rule-based (or LLM) narrative +
+    fresh (≤7 day) news headlines as the likely trigger + free Gemini
+    deep-link with a commodity-specific prompt.
+    """
+    name = rep.get("name", "Metal")
+    box = ""
+    if analysis:
+        box = (f'<div style="margin-top:9px;background:{GRAY_TINT};border-radius:8px;'
+               f'padding:9px 11px;font-size:12.5px;color:{INK};line-height:1.55;">'
+               f'💡 {html_escape(str(analysis))}</div>')
+
+    gemini_prompt = (
+        f"Give a complete technical analysis of {name} (COMEX futures, USD/oz): "
+        f"current trend and momentum across 15-minute, daily, weekly, monthly and yearly "
+        f"timeframes, key support/resistance levels, recent news and macro drivers "
+        f"(Fed policy, USD index, inflation), and the most likely reasons behind its "
+        f"recent price move. End with a short risk summary. Do not give buy/sell advice."
+    )
+
+    st.markdown(f"""
+    <div class="opl-card" style="padding:12px 14px; margin-top:10px;">
+        <div style="font-size:12px; font-weight:800; letter-spacing:.6px;
+                    color:{MUTED}; margin-bottom:3px;">🤖 AI ANALYSIS</div>
+        {box}
+        {news_links(news)}
+        {gemini_ai_link(name, prompt=gemini_prompt)}
+    </div>
+    """, unsafe_allow_html=True)

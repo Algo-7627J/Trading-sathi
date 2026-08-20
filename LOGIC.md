@@ -76,6 +76,9 @@ Data: Yahoo Finance COMEX futures (`GC=F`, `SI=F`).
 4. **20-day breakout**: close > 20D high = upside breakout, < 20D low = downside breakdown;
    volume ≥1.3× avg = *Confirmed*, warna *Low-Volume*.
 5. Output: per-timeframe arrows, consensus meter, breakout, ATR-based expected move + support/resistance.
+6. **🤖 AI analysis** (har panel ke neeche): rule-based analyst note (ya LLM, agar secret key hai) jo
+   consensus, breakout state, RSI, ATR aur support/resistance se move ki *likely reason* likhta hai +
+   **fresh news headlines (≤7 din)** possible trigger ke roop mein + free Gemini deep-link.
 
 > Strongest setup = sab 5 arrows same direction **aur** volume-confirmed breakout.
 

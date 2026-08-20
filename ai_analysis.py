@@ -15,6 +15,7 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 import pandas as pd
 import requests
@@ -117,6 +118,179 @@ def builtin_analysis(row, news=None, kind="momentum"):
         parts.append(f"Possible trigger: \"{news[0]['title']}\".")
 
     return " ".join(parts) if parts else f"{sym}: no clear catalyst detected."
+
+
+# ====================== GOLD & SILVER AI ANALYSIS ======================
+def get_metal_news(metal, limit=3):
+    """Fresh (≤7 days) headlines for gold/silver — price outlook & macro drivers.
+
+    Same Google News RSS approach as get_news(), but with commodity
+    queries and a 7-day freshness filter so the "trigger" is current.
+    """
+    name = str(metal).upper().strip()
+    key = f"METAL_{name}"
+    now = time.time()
+    hit = _NEWS_CACHE.get(key)
+    if hit and (now - hit[0]) < _NEWS_TTL:
+        return hit[1]
+
+    q = {"GOLD": "gold price outlook", "SILVER": "silver price outlook"}.get(
+        name, "gold price outlook")
+    out = []
+    try:
+        url = (f"https://news.google.com/rss/search?q={requests.utils.quote(q)}"
+               f"&hl=en-IN&gl=IN&ceid=IN:en")
+        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code == 200:
+            root = ET.fromstring(r.text)
+            for it in root.findall(".//item"):
+                title = it.findtext("title") or ""
+                title = re.sub(r"\s*-\s*[^-]+$", "", title).strip()
+                link = it.findtext("link") or ""
+                if not title:
+                    continue
+                # 7-day freshness (Google ignores date operators on some
+                # queries, so enforce it locally; unparseable = keep)
+                pub = it.findtext("pubDate") or ""
+                try:
+                    ts = datetime.strptime(
+                        pub, "%a, %d %b %Y %H:%M:%S %Z").timestamp()
+                    if time.time() - ts > 7 * 86400:
+                        continue
+                except Exception:
+                    pass
+                out.append({"title": title, "link": link})
+                if len(out) >= limit:
+                    break
+    except Exception:
+        pass
+
+    _NEWS_CACHE[key] = (now, out)
+    return out
+
+
+def builtin_metal_analysis(rep, news=None):
+    """Deterministic analyst-style note from a metal report
+    (commodities.get_metal_report) — always available, no key needed."""
+    name = str(rep.get("name", "Metal"))
+    parts = []
+
+    if rep.get("simulated"):
+        parts.append("⚠️ SIMULATED DATA (live feed unavailable):")
+
+    try:
+        ltp, chg = rep.get("ltp"), rep.get("change_pct", 0)
+        parts.append(f"{name} is trading at ${ltp:,.2f}, "
+                     f"{'up' if chg >= 0 else 'down'} {abs(chg):.2f}% today.")
+    except (TypeError, ValueError):
+        pass
+
+    cd, cons = rep.get("consensus_dir", ""), rep.get("consensus", 0)
+    bull, bear = rep.get("bull_count", 0), rep.get("bear_count", 0)
+    parts.append(f"Multi-timeframe consensus is {cd} ({cons:+.1f} / 17) — "
+                 f"{bull} bullish vs {bear} bearish timeframes.")
+
+    brk = rep.get("breakout") or {}
+    st_ = brk.get("state")
+    if st_ == "up":
+        parts.append(f"🚀 Price has broken above the 20-day range "
+                     f"(${brk.get('hi20', 0):,.0f}) on {brk.get('vol_ratio', 1):.1f}x "
+                     f"average volume — a volume-backed breakout, continuation favored.")
+    elif st_ == "down":
+        parts.append(f"⚠️ Price has broken below the 20-day range "
+                     f"(${brk.get('lo20', 0):,.0f}) on {brk.get('vol_ratio', 1):.1f}x "
+                     f"average volume — weakness may extend.")
+    else:
+        parts.append(f"⏸️ Price is still inside its 20-day range "
+                     f"(${brk.get('lo20', 0):,.0f}–${brk.get('hi20', 0):,.0f}) — "
+                     f"wait for a volume-backed break before acting.")
+
+    tf = (rep.get("timeframes") or {}).get("Next Day (Daily)") or {}
+    rsi = tf.get("rsi")
+    if rsi is not None:
+        if rsi >= 70:
+            parts.append(f"Daily RSI at {rsi:.0f} is overbought — watch for exhaustion pullbacks.")
+        elif rsi <= 30:
+            parts.append(f"Daily RSI at {rsi:.0f} is oversold — a technical bounce is possible.")
+        elif rsi >= 55:
+            parts.append(f"Daily RSI at {rsi:.0f} confirms the upward momentum.")
+        elif rsi <= 45:
+            parts.append(f"Daily RSI at {rsi:.0f} confirms the downward pressure.")
+
+    atr = rep.get("atr_pct")
+    if atr is not None:
+        parts.append(f"Daily volatility (ATR) is ±{atr:.1f}% — key levels: support "
+                     f"${rep.get('support', 0):,.0f}, resistance ${rep.get('resistance', 0):,.0f}.")
+
+    if news:
+        parts.append(f'Possible trigger: "{news[0]["title"]}".')
+
+    return " ".join(parts) if parts else f"{name}: no clear catalyst detected."
+
+
+def _metal_summary(rep):
+    """One-line metal summary for the batched LLM prompt."""
+    brk = rep.get("breakout") or {}
+    return (f"{rep.get('name', '')} | LTP ${rep.get('ltp', '')} | "
+            f"today {_fmt(rep.get('change_pct'))} | "
+            f"consensus {rep.get('consensus', '')} ({rep.get('consensus_dir', '')}) | "
+            f"breakout {brk.get('state', '')} vol {brk.get('vol_ratio', 1):.1f}x | "
+            f"ATR {rep.get('atr_pct', '')}% | "
+            f"support {rep.get('support', '')} resistance {rep.get('resistance', '')}")
+
+
+def llm_metals_batch(reps, news_map):
+    """One LLM call for GOLD + SILVER. Returns {NAME: text} or None."""
+    provider, key, model = _llm_config()
+    if not provider:
+        return None
+
+    symbols = {str(r.get("name", "")).upper() for r in reps}
+    lines = []
+    for r in reps:
+        name = str(r.get("name", "")).upper()
+        news = news_map.get(name, [])
+        hl = "; ".join(n["title"] for n in news[:2]) if news else "none"
+        lines.append(f"{_metal_summary(r)} || News: {hl}")
+
+    prompt = (
+        "You are a concise commodity market analyst. For each metal below, explain "
+        "in 2 short sentences the most likely REASON behind its recent price action, "
+        "using the technicals (multi-timeframe consensus, breakout state, RSI, ATR, "
+        "support/resistance) and the news headlines given. Be factual and cautious; "
+        "never give buy/sell advice. Reply with exactly one line per metal in the "
+        "format: METAL || explanation\n\n" + "\n".join(lines)
+    )
+
+    try:
+        text = _llm_call(provider, key, model, prompt)
+        if not text:
+            return None
+        return _parse_llm(text, symbols) or None
+    except Exception:
+        return None
+
+
+def analyze_metals(reps):
+    """For each metal report -> {NAME: {'analysis': str, 'news': [headlines]}}.
+
+    One batched LLM call when a key is available, else the built-in
+    rule-based narrative. News headlines are always fetched (≤7 days).
+    """
+    out = {}
+    if not reps:
+        return out
+    names = [str(r.get("name", "")).upper() for r in reps]
+    news_map = {n: get_metal_news(n) for n in names}
+    llm = llm_metals_batch(reps, news_map) if llm_available() else None
+    for r in reps:
+        name = str(r.get("name", "")).upper()
+        news = news_map.get(name, [])
+        text = (llm or {}).get(name)
+        if not text or not str(text).strip():
+            text = builtin_metal_analysis(r, news)
+        out[name] = {"analysis": text, "news": news}
+    return out
 
 
 # ====================== REAL LLM (batched) ======================

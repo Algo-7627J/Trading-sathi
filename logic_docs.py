@@ -99,7 +99,12 @@ LOGIC_METALS = """**What it does:** multi-timeframe forecast for Gold & Silver C
    support/resistance.
 
 **How to read it:** strongest setups = all 5 arrows pointing the same way **and** a volume-confirmed breakout.
-If Yahoo is unreachable, the panel is clearly marked *SIMULATED*."""
+If Yahoo is unreachable, the panel is clearly marked *SIMULATED*.
+
+**🤖 AI analysis (under each panel):** a rule-based analyst note (LLM if a key is set in secrets) explains
+the *likely reason* behind gold/silver's move — using the consensus score, breakout state, RSI, ATR and
+support/resistance — plus **fresh news headlines (≤7 days)** as the possible trigger, and a free Gemini
+deep-link for a fuller read."""
 
 # ====================== TAB 5 — ACCURACY ======================
 LOGIC_ACCURACY = """**What it does:** scores every logged Next-Day prediction against what actually happened.
@@ -202,7 +207,9 @@ LOGIC_AI = """**How the "AI analysis" on the cards works:**
    writes a 2-sentence reason for every stock. Otherwise a **rule-based engine** writes it from the stock's
    own numbers (momentum, delivery %, RSI, volume) — always available, no key needed.
 3. **Gemini button** — every card links to Google AI Studio with a pre-filled analysis prompt for that stock
-   (free Gemini, Google sign-in, no API key or extension)."""
+   (free Gemini, Google sign-in, no API key or extension).
+4. **Gold & Silver** — the same engine works for metals: one batched LLM call (or the rule-based note)
+   explains the likely driver of gold/silver's move, with fresh ≤7-day commodity news as the trigger."""
 
 # ====================== SOCIAL BUZZ ======================
 LOGIC_SOCIAL = """**How the 💬 Social Buzz works:**

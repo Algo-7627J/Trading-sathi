@@ -150,7 +150,7 @@ from momentum import (
     scan_strong_direction, scan_consecutive,
     render_momentum_card, render_streak_card,
 )
-from ai_analysis import analyze_moves, get_news_bulk
+from ai_analysis import analyze_moves, get_news_bulk, analyze_metals
 from social_buzz import (
     fetch_buzz, fetch_buzz_bulk, buzz_item_html, buzz_sources_note, reddit_hot,
 )
@@ -164,6 +164,7 @@ from ui_helpers import (
     render_sector_card, render_bull_bear_sections, render_count_tile,
     render_sector_stock_row, render_footer, render_commodity_panel,
     render_fii_dii_banner, render_delivery_card,
+    render_metal_ai_card,
 )
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
@@ -837,15 +838,18 @@ else:
         # ==================== TAB 4: GOLD & SILVER ====================
         with tab4:
             render_logic_expander("📖 How the Gold & Silver forecast works", LOGIC["metals"])
+            render_logic_expander("🤖 How the AI analysis works", LOGIC["ai"])
             section_label("🥇 Gold & Silver — Multi-Timeframe Forecast")
 
             cbtn, cinfo = st.columns([1, 3])
             with cbtn:
                 if st.button("🔄 Refresh Data", key="metal_refresh", use_container_width=True):
                     st.session_state.pop("metal_cache", None)
+                    st.session_state.pop("metal_ai_cache", None)
             with cinfo:
                 st.caption("Live COMEX futures data (Yahoo Finance) • Prices in USD/oz • Auto-cached for 15 min. "
-                           "Momentum = EMA trend + MACD + RSI + volume + 16-pattern detection, then 20-day breakout logic.")
+                           "Momentum = EMA trend + MACD + RSI + volume + 16-pattern detection, then 20-day breakout logic. "
+                           "🤖 AI analysis below each panel explains the likely reason behind the move.")
 
             mc = st.session_state.get("metal_cache")
             if not mc or _time.time() - mc["ts"] > 900:
@@ -857,14 +861,28 @@ else:
                     }
                 st.session_state.metal_cache = mc
 
+            # 🤖 AI analysis for Gold & Silver (cached 30 min, refreshed with 🔄)
+            metal_ai = st.session_state.get("metal_ai_cache")
+            if not metal_ai or _time.time() - metal_ai.get("ts", 0) > 1800:
+                with st.spinner("🤖 Generating AI analysis for Gold & Silver…"):
+                    metal_ai = {"ts": _time.time()}
+                    metal_ai.update(analyze_metals([mc["GOLD"], mc["SILVER"]]))
+                st.session_state.metal_ai_cache = metal_ai
+
             col_gold, col_silver = st.columns(2, gap="large")
             with col_gold:
                 render_commodity_panel(mc["GOLD"])
+                ga = metal_ai.get("GOLD", {})
+                render_metal_ai_card(mc["GOLD"], ga.get("analysis"), ga.get("news"))
             with col_silver:
                 render_commodity_panel(mc["SILVER"])
+                sa = metal_ai.get("SILVER", {})
+                render_metal_ai_card(mc["SILVER"], sa.get("analysis"), sa.get("news"))
 
             st.info("💡 **How to read this:** The strongest trades happen when all 5 timeframe arrows point the same way "
                     "**and** price breaks out of the 20-day range on above-average volume (🚀 Confirmed). "
+                    "The 🤖 AI analysis combines those signals with fresh news (≤7 days) to suggest the likely "
+                    "trigger — and you can always open the free Gemini deep-link for a fuller read. "
                     "Directional confluence ≠ certainty — always use your own risk management.")
 
         # ==================== TAB 5: ACCURACY REPORT ====================
