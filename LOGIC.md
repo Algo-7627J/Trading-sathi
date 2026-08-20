@@ -180,6 +180,10 @@ Post-Earnings Announcement Drift — un stocks ke liye jinhone **results declare
 3. **X (Twitter) v2 API** — real tweets, sirf tab chalti hai jab `X_BEARER_TOKEN` Streamlit secrets
    mein ho (optional upgrade; upar wale do sources bina kisi key ke chalte hain).
 
+**⏱️ 7-day window** — sirf **last 7 days** ka content dikhta hai: Reddit search `t=week` use karta hai,
+Google News `when:7d`, aur har item par ek final age-filter lagta hai. Ek hafte se purani news/tweets
+drop ho jaati hain — purani "news" aaj ke move ka trigger nahi hoti.
+
 **Sentiment** — simple bullish/bearish lexicon (buy/breakout/rally vs sell/crash/downgrade + Hinglish
 market slang) har post/headline par tone chip lagata hai. Tab 🟢/🔴/⚪ tallies dikhata hai.
 

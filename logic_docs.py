@@ -207,20 +207,23 @@ LOGIC_AI = """**How the "AI analysis" on the cards works:**
 # ====================== SOCIAL BUZZ ======================
 LOGIC_SOCIAL = """**How the 💬 Social Buzz works:**
 1. **Sources** (all free, no API key):
-   - **Reddit** — recent posts/comments mentioning the symbol across Indian trading subreddits
+   - **Reddit** — posts/comments mentioning the symbol across Indian trading subreddits
      (r/IndianStreetBets, r/IndiaInvestments, r/StockMarketIndia, r/DalalStreetTalks, …).
    - **Google News "social"** — headlines where the stock was being discussed on twitter/social media
      ("viral", "trending"…). Catches tweets that made the news.
    - **X (Twitter) v2 API** — real recent tweets, used automatically *only if* `X_BEARER_TOKEN` is set
      in Streamlit secrets (optional upgrade; the free sources above need nothing).
-2. **Sentiment** — each post/headline is scored with a simple bullish/bearish lexicon; the tab shows
+2. **⏱️ 7-day window** — sirf **last 7 days** ka content dikhaya jaata hai (Reddit `t=week`,
+   Google News `when:7d`, aur har item par ek final age-filter). Purani khabar/old tweets nahi —
+   kyunki ek hafte purani "news" aaj ke move ka trigger nahi ho sakti.
+3. **Sentiment** — each post/headline is scored with a simple bullish/bearish lexicon; the tab shows
    🟢 Bullish / 🔴 Bearish / ⚪ Neutral tallies and a per-item tone chip.
-3. **On cards** — Strong Direction & Streak cards show a compact **💬 SOCIAL BUZZ** strip (top 2 items +
+4. **On cards** — Strong Direction & Streak cards show a compact **💬 SOCIAL BUZZ** strip (top 2 items +
    bullish/bearish tally) as *possible triggers* for the move. It is fetched for the top symbols only
    (capped, cached 10 min) so scans stay fast. Toggle it from the sidebar.
-4. **Dedicated tab** — the **💬 Social Buzz** tab lets you search any symbol on demand, shows every item
+5. **Dedicated tab** — the **💬 Social Buzz** tab lets you search any symbol on demand, shows every item
    with score/comments/age, and downloads the list as CSV.
-5. **Best-effort by design** — some sources block cloud IPs (e.g. Reddit). The app reports "source
+6. **Best-effort by design** — some sources block cloud IPs (e.g. Reddit). The app reports "source
    unreachable" instead of silently showing nothing, and everything else keeps working.
 
 > ℹ️ Buzz is **informational only** — it never changes the scan score or signal."""

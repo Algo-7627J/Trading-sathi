@@ -14,6 +14,12 @@
 # Every source degrades to an empty list instead of raising, and the
 # result reports which sources answered, so the UI can say "source
 # unavailable" instead of silently showing nothing.
+#
+# ⏱️ 7-DAY WINDOW: only content from the last 7 days is shown — old news
+# is not a trigger for today's move. Enforced three ways:
+#   • Reddit search uses t=week
+#   • Google News queries carry an `after:` date (last 7 days)
+#   • a final hard age-filter drops anything older than _MAX_AGE_DAYS
 # ------------------------------------------------------------------
 import html as _html
 import os
@@ -42,6 +48,7 @@ _REDDIT_SUBS = [
 ]
 _PER_SOURCE = 4          # items fetched per source
 _CACHE_TTL = 600         # 10 min in-memory cache
+_MAX_AGE_DAYS = 7        # show only buzz from the last 7 days (fresh triggers)
 
 # search-phrase aliases: indices & commodities are discussed by name
 _ALIAS = {
@@ -89,6 +96,16 @@ def search_phrase(symbol):
     return _ALIAS.get(s, s)
 
 
+def _is_fresh(ts, max_age_days=_MAX_AGE_DAYS):
+    """True if `ts` is within the last `max_age_days` (or unknown)."""
+    if not ts:
+        return True          # no timestamp → keep (best-effort)
+    try:
+        return (time.time() - float(ts)) <= max_age_days * 86400
+    except Exception:
+        return True
+
+
 def _age(ts):
     if not ts:
         return ""
@@ -126,9 +143,10 @@ def _reddit_items(query, limit=_PER_SOURCE):
     """
     q = quote(query)
     subs = "+".join(_REDDIT_SUBS)
+    # t=week → only posts from the last 7 days (fresh triggers only)
     urls = [
-        f"https://www.reddit.com/search.json?q={q}&subreddit={subs}&sort=new&t=month&limit={limit}",
-        f"https://old.reddit.com/search.json?q={q}&subreddit={subs}&sort=new&t=month&limit={limit}",
+        f"https://www.reddit.com/search.json?q={q}&subreddit={subs}&sort=new&t=week&limit={limit}",
+        f"https://old.reddit.com/search.json?q={q}&subreddit={subs}&sort=new&t=week&limit={limit}",
     ]
     for url in urls:
         try:
@@ -170,44 +188,62 @@ def _reddit_items(query, limit=_PER_SOURCE):
 
 
 def _news_social_items(symbol, limit=_PER_SOURCE):
-    """Google News headlines where the symbol was discussed on social media."""
+    """Google News headlines where the symbol was discussed recently.
+
+    Strategy: try a social-specific query (twitter/viral/trending) first;
+    if it returns nothing fresh, fall back to fresh general headlines for
+    the symbol. Both queries carry an `after:` date (last 7 days) and the
+    caller applies a final hard age-filter (Google's `after:` is
+    approximate, and `when:7d` is ignored for complex queries).
+    """
     phrase = search_phrase(symbol)
-    q = quote(f'"{phrase}" (twitter OR viral OR "social media" OR trending)')
-    url = (f"https://news.google.com/rss/search?q={q}&hl=en-IN&gl=IN&ceid=IN:en")
-    try:
-        r = requests.get(url, timeout=10, headers={"User-Agent": UA})
-        if r.status_code != 200:
-            return []
-        root = ET.fromstring(r.text)
-        out = []
-        for it in root.findall(".//item")[:limit]:
-            title = (it.findtext("title") or "").strip()
-            title = re.sub(r"\s*-\s*[^-]+$", "", title).strip()
-            link = it.findtext("link") or ""
-            if not title:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=_MAX_AGE_DAYS)).strftime("%Y-%m-%d")
+    queries = [
+        (f'"{phrase}" (twitter OR viral OR "social media" OR trending) after:{cutoff}',
+         "Google News · social"),
+        (f'"{phrase}" after:{cutoff}', "Google News"),
+    ]
+    for q, meta in queries:
+        url = (f"https://news.google.com/rss/search?q={quote(q)}&hl=en-IN&gl=IN"
+               f"&ceid=IN:en&when:7d")
+        try:
+            r = requests.get(url, timeout=10, headers={"User-Agent": UA})
+            if r.status_code != 200:
                 continue
-            pub = it.findtext("pubDate") or ""
-            ts = 0
-            try:
-                ts = datetime.strptime(pub, "%a, %d %b %Y %H:%M:%S %Z").replace(
-                    tzinfo=timezone.utc).timestamp()
-            except Exception:
-                pass
-            out.append({
-                "source": "news",
-                "kind": "headline",
-                "title": title,
-                "snippet": "",
-                "url": link,
-                "score": 0,
-                "comments": 0,
-                "ts": ts,
-                "tone": _tone(title),
-                "meta": "Google News · social",
-            })
-        return out
-    except Exception:
-        return []
+            root = ET.fromstring(r.text)
+            out = []
+            for it in root.findall(".//item")[:limit * 2]:
+                title = (it.findtext("title") or "").strip()
+                title = re.sub(r"\s*-\s*[^-]+$", "", title).strip()
+                link = it.findtext("link") or ""
+                if not title:
+                    continue
+                pub = it.findtext("pubDate") or ""
+                ts = 0
+                try:
+                    ts = datetime.strptime(pub, "%a, %d %b %Y %H:%M:%S %Z").replace(
+                        tzinfo=timezone.utc).timestamp()
+                except Exception:
+                    pass
+                if not _is_fresh(ts):
+                    continue          # Google's after: is approximate — enforce 7d
+                out.append({
+                    "source": "news",
+                    "kind": "headline",
+                    "title": title,
+                    "snippet": "",
+                    "url": link,
+                    "score": 0,
+                    "comments": 0,
+                    "ts": ts,
+                    "tone": _tone(title),
+                    "meta": meta,
+                })
+            if out:
+                return out[:limit]
+        except Exception:
+            continue
+    return []
 
 
 def _x_bearer_token():
@@ -318,7 +354,8 @@ def reddit_hot(subreddit="IndianStreetBets", limit=8):
                 "tone": _tone(title),
                 "meta": f"r/{subreddit}",
             })
-        return out[:limit]
+        # hot feed only — keep posts from the last 7 days
+        return [i for i in out if _is_fresh(i.get("ts"))][:limit]
     except Exception:
         return []
 
@@ -361,7 +398,8 @@ def fetch_buzz(symbol, per_source=_PER_SOURCE, force=False):
             continue
         seen.add(key)
         dedup.append(it)
-    items = dedup
+    # HARD 7-DAY WINDOW: anything older than a week is not a fresh trigger
+    items = [i for i in dedup if _is_fresh(i.get("ts"))]
 
     bull = sum(1 for i in items if i["tone"] == "bull")
     bear = sum(1 for i in items if i["tone"] == "bear")
@@ -377,6 +415,7 @@ def fetch_buzz(symbol, per_source=_PER_SOURCE, force=False):
         "tone": tone,
         "engagement": engagement,
         "sources_ok": ok,
+        "window_days": _MAX_AGE_DAYS,
         "updated": now,
     }
     _CACHE[s] = (now, res)
@@ -482,10 +521,12 @@ def buzz_section_html(buzz, max_items=2):
         rows += (f'<a href="{url}" target="_blank" rel="noopener noreferrer" '
                  f'class="opl-link" style="display:block;">{line}</a>')
 
+    window = buzz.get("window_days", 7)
     return (
         f'<div style="margin-top:10px;padding-top:9px;border-top:1px dashed var(--border);">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">'
-        f'<span style="font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--muted);">💬 SOCIAL BUZZ</span>'
+        f'<span style="font-size:11px;font-weight:800;letter-spacing:.6px;color:var(--muted);">'
+        f'💬 SOCIAL BUZZ · LAST {window}D</span>'
         f'<span style="font-size:11px;">{tally_html}</span></div>'
         f'{rows}</div>'
     )

@@ -1216,7 +1216,7 @@ else:
                 sd_buzz = st.session_state.get("sd_buzz", {})
                 st.caption("💡 **AI analysis** explains the likely reason behind each move (LLM if a key is set in "
                            "secrets, else rule-based) + latest news headlines. **💬 Social Buzz** flags what people "
-                           "are saying on Reddit/news as possible triggers. **Delivery %** = genuineness of the "
+                           "are saying on Reddit/news (last 7 days) as possible triggers. **Delivery %** = genuineness of the "
                            "move — high delivery = real conviction, low = speculative intraday churn.")
 
                 up = sd_df[sd_df["Direction"] == "Strong Up"].sort_values("Avg %", ascending=False)
@@ -1316,7 +1316,7 @@ else:
                 sk_buzz = st.session_state.get("sk_buzz", {})
                 st.caption("💡 **AI analysis** explains the likely reason behind each streak (LLM if a key is set in "
                            "secrets, else rule-based) + latest news headlines. **💬 Social Buzz** flags what people "
-                           "are saying on Reddit/news as possible triggers. **Delivery %** = genuineness of the "
+                           "are saying on Reddit/news (last 7 days) as possible triggers. **Delivery %** = genuineness of the "
                            "move — high delivery = real conviction, low = speculative intraday churn.")
 
                 up = sk_df[sk_df["Direction"] == "Up"].sort_values("Streak", ascending=False)
@@ -1461,8 +1461,9 @@ else:
         with tab10:
             render_logic_expander("📖 How Social Buzz works", LOGIC["social"])
             section_label("💬 Social Buzz — what people are saying")
-            st.caption("Recent Reddit chatter & social-media news for any symbol — the kind of talk that often "
-                       "**triggers or explains** a move. Free sources, informational only (does not change scores).")
+            st.caption("Reddit chatter & social-media news from the **last 7 days** for any symbol — the kind of "
+                       "fresh talk that **triggers or explains** a move. Free sources, informational only "
+                       "(does not change scores).")
 
             bc1, bc2 = st.columns([2, 1])
             with bc1:
