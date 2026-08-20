@@ -20,6 +20,7 @@ RAO SAHAB ek Streamlit-based smart scanner hai jo intraday aur max 2-day holding
 - **Streak Movers (🔥)**: stocks closing up (or down) for N consecutive days
 - **AI-generated analysis**: every Strong Direction / Streak card now explains the *likely reason* behind the move (real LLM if a key is set, else a rule-based narrative) + latest news headlines (Google News)
 - **Premium UI**: full-width gradient header band, premium dark-green sidebar, bold solid tab buttons, gradient-tinted cards, a **🌙 Dark Mode toggle**, and a **🛩️ Su-30 MKI fighter-jet backdrop** (toggle in the sidebar, on by default)
+- **📱 Mobile-friendly**: responsive layout for phones — sidebar starts collapsed, tabs become a 2-column button grid, all column layouts stack vertically, big tap targets, and no horizontal scrolling. Every action (⚡ Run Scan included) is reachable on a phone.
 - **Delivery % on momentum cards**: NSE security-wise delivery shows the *genuineness* of the move — high delivery = conviction-backed, low = speculative intraday churn
 - **PEAD Tool (📢)**: Post-Earnings Announcement Drift — result quality (Good/Mixed/Bad) + whether the stock is still drifting after results
 - Persistent watchlist (add/remove symbols, dedicated results section)

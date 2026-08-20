@@ -94,7 +94,8 @@ section[data-testid="stSidebar"] div[data-testid="stTextInput"] input,
 section[data-testid="stSidebar"] div[data-testid="stNumberInput"] input {
   background: rgba(255,255,255,.08); color: #FFFFFF; border-color: rgba(255,255,255,.18);
 }
-section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+section[data-testid="stSidebar"] div[data-baseweb="select"] > div,
+section[data-testid="stSidebar"] [data-testid="stSelectbox"] input[role="combobox"] {
   background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); color: #FFFFFF;
 }
 section[data-testid="stSidebar"] [data-testid="stCheckbox"] label span,
@@ -124,20 +125,30 @@ section[data-testid="stSidebar"] [data-testid="stExpander"] {
 .stDownloadButton > button { border-radius: 10px; font-weight: 600; }
 
 /* ===================== Tabs — solid green buttons ===================== */
-.stTabs [data-baseweb="tab-list"] { gap: 6px; border-bottom: none; padding: 6px 0 10px 0; flex-wrap: wrap; }
-.stTabs [data-baseweb="tab"] {
-  font-weight: 800 !important; font-size: 13px; color: #00875F;
-  background: var(--cardbg); border: 1.5px solid #00B386; border-radius: 10px;
-  padding: 8px 14px; margin: 0; transition: all .15s ease; white-space: nowrap;
+/* Dual selectors: legacy Streamlit used [data-baseweb="tab*"], while
+   Streamlit 1.5x+ (React Aria) uses [role="tablist"] / [data-testid="stTab"]. */
+.stTabs [data-baseweb="tab-list"], .stTabs [role="tablist"] {
+  gap: 6px; border-bottom: none; padding: 6px 0 10px 0; flex-wrap: wrap; overflow: visible;
 }
-.stTabs [data-baseweb="tab"] p { font-weight: 800 !important; }
-.stTabs [data-baseweb="tab"]:hover { background: #E5F7F0; color: #00875F; }
-.stTabs [data-baseweb="tab"][aria-selected="true"] {
+.stTabs [data-baseweb="tab"], .stTabs [data-testid="stTab"] {
+  display: flex !important; align-items: center !important; justify-content: center !important;
+  font-weight: 800 !important; font-size: 13px !important; color: #00875F;
+  background: var(--cardbg) !important; border: 1.5px solid #00B386 !important;
+  border-radius: 10px !important; padding: 8px 14px !important; margin: 0;
+  transition: all .15s ease; white-space: nowrap;
+}
+.stTabs [data-baseweb="tab"] p, .stTabs [data-testid="stTab"] p {
+  font-weight: 800 !important; color: inherit !important; margin: 0;
+}
+.stTabs [data-baseweb="tab"]:hover, .stTabs [data-testid="stTab"]:hover {
+  background: #E5F7F0 !important; color: #00875F;
+}
+.stTabs [data-baseweb="tab"][aria-selected="true"], .stTabs [data-testid="stTab"][data-selected="true"] {
   background: linear-gradient(135deg, #00B386, #00C48E) !important;
-  color: #FFFFFF !important; border-color: #00B386;
+  color: #FFFFFF !important; border-color: #00B386 !important;
   box-shadow: 0 4px 12px rgba(0,179,134,.35);
 }
-.stTabs [data-baseweb="tab-highlight"] { display: none; }
+.stTabs [data-baseweb="tab-highlight"], .stTabs .react-aria-SelectionIndicator { display: none !important; }
 .stTabs [data-baseweb="tab-border"] { background: transparent; }
 
 /* ===================== Inputs & widgets ===================== */
@@ -146,7 +157,8 @@ section[data-testid="stSidebar"] [data-testid="stExpander"] {
 [data-testid="stExpander"] summary { font-weight: 700; }
 [data-testid="stAlert"] { border-radius: 12px; }
 div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input,
-div[data-baseweb="select"] > div { border-radius: 10px !important; }
+div[data-baseweb="select"] > div,
+[data-testid="stSelectbox"] input[role="combobox"] { border-radius: 10px !important; }
 hr { border-color: var(--bar); }
 .stCaption, [data-testid="stCaptionContainer"] p { color: var(--muted); }
 
@@ -231,6 +243,51 @@ hr { border-color: var(--bar); }
 [data-testid="stMarkdownContainer"] table { border-collapse: collapse; }
 [data-testid="stMarkdownContainer"] th, [data-testid="stMarkdownContainer"] td { border: 1px solid var(--border); padding: 6px 10px; color: var(--ink); }
 [data-testid="stMarkdownContainer"] th { background: var(--panel); color: var(--heading); font-weight: 700; }
+
+/* ===================== MOBILE / RESPONSIVE (<= 768px) ===================== */
+@media (max-width: 768px) {
+  /* use the full screen width with tight padding */
+  .block-container { padding: 0.5rem 0.75rem 3.5rem 0.75rem !important; max-width: 100% !important; }
+
+  /* stack EVERY column layout vertically (scan settings, stat tiles, etc.) */
+  [data-testid="stHorizontalBlock"] { flex-direction: column !important; gap: 0.35rem !important; }
+  [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+
+  /* tabs -> 2-column grid of full-width buttons: every tab stays visible & tappable */
+  .stTabs [data-baseweb="tab-list"], .stTabs [role="tablist"] { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 5px !important; overflow: visible !important; }
+  .stTabs [data-baseweb="tab"], .stTabs [data-testid="stTab"] { width: 100% !important; justify-content: center !important; padding: 10px 8px !important; white-space: normal !important; text-align: center !important; }
+  .stTabs [data-baseweb="tab-border"], .stTabs [data-baseweb="tab-highlight"], .stTabs .react-aria-SelectionIndicator { display: none !important; }
+
+  /* hero band: compact, wraps instead of overflowing */
+  .rs-hero { padding: 14px 0 12px 0; }
+  .rs-hero-inner { padding: 0 14px; gap: 10px; flex-wrap: wrap; }
+  .rs-hero-logo { width: 40px; height: 40px; font-size: 16px; border-radius: 11px; }
+  .rs-hero-title { font-size: 18px; }
+  .rs-hero-sub { font-size: 11.5px; }
+  .rs-hero-pill { margin-left: 0; font-size: 11px; padding: 4px 10px; }
+
+  /* comfortable thumb-sized tap targets */
+  .stButton > button, .stDownloadButton > button { min-height: 44px; }
+  div[data-baseweb="select"] > div, [data-testid="stSelectbox"] input[role="combobox"] { min-height: 42px; }
+  [role="radiogroup"] { flex-wrap: wrap !important; }
+
+  /* compact tiles & cards */
+  .opl-tile { padding: 10px 12px; }
+  .opl-tile .val { font-size: 22px; }
+  .opl-count { padding: 13px 10px; }
+  .opl-sechead { margin: 12px 0 8px 0; }
+  .opl-sechead .t { font-size: 15px; }
+  .opl-sym { font-size: 15px; }
+  .opl-card { padding: 10px 12px; }
+
+  /* long markdown tables scroll horizontally instead of overflowing */
+  [data-testid="stMarkdownContainer"] table { display: block; overflow-x: auto; white-space: nowrap; }
+}
 </style>
 """
     dark_css = """
@@ -252,13 +309,13 @@ section[data-testid="stSidebar"] { background: linear-gradient(180deg, #050D0A 0
 .chip-red { background: rgba(235,91,60,.16); color: #FF9078; }
 .chip-gray { background: var(--panel); color: var(--muted); }
 .opl-ext { color: #4A5A70; }
-.stTabs [data-baseweb="tab"] { background: var(--cardbg); color: #3EE6A2; border-color: rgba(0,179,134,.5); }
-.stTabs [data-baseweb="tab"]:hover { background: rgba(0,179,134,.12); }
-.stTabs [data-baseweb="tab"][aria-selected="true"] { background: linear-gradient(135deg, #00B386, #00C48E) !important; color: #FFFFFF !important; }
+.stTabs [data-baseweb="tab"], .stTabs [data-testid="stTab"] { background: var(--cardbg) !important; color: #3EE6A2; border-color: rgba(0,179,134,.5) !important; }
+.stTabs [data-baseweb="tab"]:hover, .stTabs [data-testid="stTab"]:hover { background: rgba(0,179,134,.12) !important; }
+.stTabs [data-baseweb="tab"][aria-selected="true"], .stTabs [data-testid="stTab"][data-selected="true"] { background: linear-gradient(135deg, #00B386, #00C48E) !important; color: #FFFFFF !important; }
 [data-testid="stExpander"] { background: var(--cardbg); }
 [data-testid="stDataFrame"] { border-color: var(--border); }
 div[data-testid="stTextInput"] input, div[data-testid="stNumberInput"] input { background: var(--panel); color: var(--ink); }
-div[data-baseweb="select"] > div { background: var(--panel); color: var(--ink); border-color: var(--border); }
+div[data-baseweb="select"] > div, [data-testid="stSelectbox"] input[role="combobox"] { background: var(--panel); color: var(--ink); border-color: var(--border); }
 .stButton > button { background: var(--cardbg); color: var(--ink); border-color: var(--border); }
 .stButton > button:hover { border-color: #00B386; color: #3EE6A2; }
 hr { border-color: var(--bar); }
@@ -284,6 +341,11 @@ hr { border-color: var(--bar); }
 .rs-hero {{
   background: linear-gradient(120deg, rgba(0,94,82,.55) 0%, rgba(0,154,116,.42) 45%, rgba(0,196,142,.30) 100%);
   box-shadow: none; border-bottom: 1px solid rgba(255,255,255,.12);
+}}
+/* iOS Safari ignores background-attachment:fixed and would stretch the
+   photo across the whole page — use a clean solid dark on phones instead. */
+@media (max-width: 768px) {{
+  .stApp {{ background-image: none !important; background-color: #07110D !important; }}
 }}
 </style>
 """

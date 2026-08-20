@@ -164,7 +164,10 @@ from ui_helpers import (
 )
 from sectors import add_sector_column, get_sector_timeframe_stats, get_top_stocks_by_sector
 
-st.set_page_config(page_title="RAO SAHAB", layout="wide", page_icon="📈")
+# initial_sidebar_state="collapsed" — critical for mobile: an open sidebar
+# covers the whole screen on phones and hides the app (and Run Scan).
+st.set_page_config(page_title="RAO SAHAB", layout="wide", page_icon="📈",
+                   initial_sidebar_state="collapsed")
 # Theme defaults must exist before CSS injection + sidebar toggles render.
 st.session_state.setdefault("dark_mode", False)
 st.session_state.setdefault("jet_bg", True)
