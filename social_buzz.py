@@ -96,6 +96,151 @@ def search_phrase(symbol):
     return _ALIAS.get(s, s)
 
 
+# ---------------- ticker disambiguation ----------------
+# Tickers that collide with unrelated things ("ACC" = a US football
+# conference + Asian Cricket Council + a Cabinet committee; "IOC" =
+# International Olympic Committee; "SAIL" = sailing…). For these we
+# search by the company's real name so results stay about the stock.
+_COMPANY = {
+    "ACC": "ACC Ltd",
+    "SAIL": "Steel Authority of India",
+    "YES": "Yes Bank",
+    "IDEA": "Vodafone Idea",
+    "TITAN": "Titan Company",
+    "PAGE": "Page Industries",
+    "IOC": "Indian Oil",
+    "GAIL": "GAIL India",
+    "M&M": "Mahindra & Mahindra",
+    "LT": "Larsen & Toubro",
+    "HAL": "Hindustan Aeronautics",
+    "BEL": "Bharat Electronics",
+    "BHEL": "Bharat Heavy Electricals",
+    "UBL": "United Breweries",
+    "PNB": "Punjab National Bank",
+    "SBIN": "State Bank of India",
+    "NAUKRI": "Info Edge",
+    "CONCOR": "Container Corporation of India",
+    "AMBER": "Amber Enterprises",
+    "RAINBOW": "Rainbow Children's",
+    "PEL": "Piramal Enterprises",
+    "MRPL": "Mangalore Refinery",
+    "SUNTV": "Sun TV Network",
+    "NATIONALUM": "National Aluminium Company",
+    "CANBK": "Canara Bank",
+    "FEDERALBNK": "Federal Bank",
+    "PETRONET": "Petronet LNG",
+    "LALPATHLAB": "Dr Lal PathLabs",
+    "BANKBARODA": "Bank of Baroda",
+    "BANKINDIA": "Bank of India",
+    "AUBANK": "AU Small Finance Bank",
+    "BANDHANBNK": "Bandhan Bank",
+    "IDFCFIRSTB": "IDFC First Bank",
+    "GODREJCP": "Godrej Consumer Products",
+    "GODREJPROP": "Godrej Properties",
+    "GODREJIND": "Godrej Industries",
+    "INDIAMART": "IndiaMART",
+    "MGL": "Mahanagar Gas",
+    "IGL": "Indraprastha Gas",
+    "JSL": "Jindal Stainless",
+    "VEDL": "Vedanta",
+    "APOLLOHOSP": "Apollo Hospitals",
+    "TVSMOTOR": "TVS Motor",
+    "MARUTI": "Maruti Suzuki",
+    "TATAPOWER": "Tata Power",
+    "ADANIENT": "Adani Enterprises",
+    "ADANIPORTS": "Adani Ports",
+    "AMBUJACEM": "Ambuja Cements",
+    "ULTRACEMCO": "UltraTech Cement",
+    "SBICARD": "SBI Card",
+    "SBILIFE": "SBI Life",
+    "RECLTD": "REC Limited",
+}
+
+# extra words to EXCLUDE for the worst offenders when searching by ticker
+_EXCLUDE = {
+    "SAIL": ["SailPoint"],
+    "ACC": ["football", "conference", "cricket"],
+    "HAL": ["Halliburton"],
+    "IOC": ["Olympic"],
+}
+
+# words that signal a stock/business context. Used to filter out
+# same-name noise: "ACC football championship" has none of these and
+# gets dropped, "ACC Q1 results revenue" passes.
+_BUSINESS = {
+    "share", "shares", "stock", "stocks", "nse", "bse", "q1", "q2", "q3",
+    "q4", "results", "result", "earnings", "profit", "profits", "revenue",
+    "net", "crore", "target", "targets", "price", "prices", "rating",
+    "ratings", "upgrade", "downgrade", "buy", "sell", "hold", "broker",
+    "brokerage", "rally", "rallies", "gains", "gain", "falls", "fall",
+    "rises", "rise", "jumps", "jump", "plunges", "plunge", "dividend",
+    "merger", "acquisition", "acquire", "acquires", "capex", "order",
+    "orders", "ipo", "ofs", "buyback", "stake", "investors", "investor",
+    "market", "markets", "trade", "trading", "index", "nifty", "sensex",
+    "outlook", "guidance", "margin", "margins", "fy", "quarter", "quarters",
+    "quarterly", "annual", "agm", "board", "concall", "debt", "demerger",
+    "split", "bonus", "listing", "valuation", "forecast", "prediction",
+    "session", "week", "upside", "downside", "bullish", "bearish",
+    "outperform", "underperform", "pat", "ebitda", "ltd", "limited",
+    "rupees", "announce", "announces", "announced", "launch", "launches",
+    "launched", "plant", "plants", "facility", "expansion", "expands",
+    "partnership", "deal", "deals", "signed", "bags", "contract",
+    "breakout", "breakdown", "support", "resistance", "position",
+    "moon", "rocket", "intraday", "swing", "futures", "options", "fno",
+}
+
+
+def _html_to_text(html):
+    """Strip tags/entities from Google News <description> HTML."""
+    try:
+        import html as _h
+        txt = re.sub(r"<[^>]+>", " ", str(html or ""))
+        return re.sub(r"\s+", " ", _h.unescape(txt)).strip()
+    except Exception:
+        return ""
+
+
+def _has_word(text, word):
+    """Word-ish match: skips matches glued to letters/digits/hyphens
+    ("Self-Reliance" must NOT match the stock RELIANCE)."""
+    w = re.escape(str(word or "").lower())
+    if not w:
+        return False
+    return bool(re.search(rf"(?<![a-z0-9-]){w}(?![a-z0-9])", str(text or "").lower()))
+
+
+def _relevant(title, desc, symbol, ctx):
+    """Is this item about the STOCK, not a same-name unrelated thing?
+
+    - company name in the TITLE + a hint of business context → stock
+    - name anywhere + strong business language → stock
+    - long unique ticker alone in the title → almost always the company
+    Casual body-text mentions (e.g. a hospital named after the group)
+    without business context get dropped.
+    """
+    t = str(title or "").lower()
+    d = str(desc or "").lower()
+    sym = str(symbol).lower()
+    c = str(ctx).lower()
+    tok = lambda text: sum(
+        1 for w in _BUSINESS
+        if re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", text)
+    )
+    score = 2 * tok(t) + tok(d)
+    name_in_title = _has_word(t, c) or _has_word(t, sym)
+    name_in_text = name_in_title or _has_word(d, c) or _has_word(d, sym)
+
+    if name_in_title and score >= 1:
+        return True
+    if name_in_text and score >= 3:
+        return True
+    if score >= 4:
+        return True
+    if len(sym) >= 8 and _has_word(t, sym):
+        return True
+    return False
+
+
 def _is_fresh(ts, max_age_days=_MAX_AGE_DAYS):
     """True if `ts` is within the last `max_age_days` (or unknown)."""
     if not ts:
@@ -166,6 +311,10 @@ def _reddit_items(query, limit=_PER_SOURCE):
                 title = str(d.get("title") or "").strip()
                 if not title:
                     continue
+                # drop same-name noise (sailing, football, "yes" as a word…)
+                selftext = str(d.get("selftext") or "")
+                if not _relevant(title, selftext, query, _COMPANY.get(query, query)):
+                    continue
                 perm = d.get("permalink") or ""
                 url2 = f"https://www.reddit.com{perm}" if perm else \
                     (d.get("url") or "")
@@ -173,12 +322,12 @@ def _reddit_items(query, limit=_PER_SOURCE):
                     "source": "reddit",
                     "kind": "post",
                     "title": title,
-                    "snippet": re.sub(r"\s+", " ", str(d.get("selftext") or ""))[:180],
+                    "snippet": re.sub(r"\s+", " ", selftext)[:180],
                     "url": url2,
                     "score": int(d.get("score") or 0),
                     "comments": int(d.get("num_comments") or 0),
                     "ts": float(d.get("created_utc") or 0),
-                    "tone": _tone(title + " " + str(d.get("selftext") or "")),
+                    "tone": _tone(title + " " + selftext),
                     "meta": str(d.get("subreddit_name_prefixed") or "reddit"),
                 })
             return out[:limit]
@@ -188,62 +337,89 @@ def _reddit_items(query, limit=_PER_SOURCE):
 
 
 def _news_social_items(symbol, limit=_PER_SOURCE):
-    """Google News headlines where the symbol was discussed recently.
+    """Google News items about the STOCK (not same-name unrelated things).
 
-    Strategy: try a social-specific query (twitter/viral/trending) first;
-    if it returns nothing fresh, fall back to fresh general headlines for
-    the symbol. Both queries carry an `after:` date (last 7 days) and the
-    caller applies a final hard age-filter (Google's `after:` is
-    approximate, and `when:7d` is ignored for complex queries).
+    Query chain (first one that yields enough fresh, relevant items wins):
+      1. fresh    — "{company}" after:<7-days-ago>   (date-filtered at source;
+                    Google's after: only works on simple queries, so it leads)
+      2. social   — "{company}" (twitter OR viral OR "social media" OR trending)
+      3. context  — "{company}" (share OR shares OR stock OR NSE OR BSE)
+      4. ticker   — "{symbol}" (share OR shares OR stock OR NSE OR BSE) [-excludes]
+                    (only when the company name differs from the ticker)
+
+    Every item must pass `_relevant()` (business-context check) and the
+    hard 7-day freshness filter — Google's date operators are approximate,
+    so the local filter is the real gate.
     """
-    phrase = search_phrase(symbol)
+    s = normalize_symbol(symbol)
+    ctx = _COMPANY.get(s, s)
     cutoff = (datetime.now(timezone.utc) - timedelta(days=_MAX_AGE_DAYS)).strftime("%Y-%m-%d")
-    queries = [
-        (f'"{phrase}" (twitter OR viral OR "social media" OR trending) after:{cutoff}',
-         "Google News · social"),
-        (f'"{phrase}" after:{cutoff}', "Google News"),
-    ]
-    for q, meta in queries:
+
+    def _run(q):
         url = (f"https://news.google.com/rss/search?q={quote(q)}&hl=en-IN&gl=IN"
-               f"&ceid=IN:en&when:7d")
+               f"&ceid=IN:en")
+        r = requests.get(url, timeout=10, headers={"User-Agent": UA})
+        if r.status_code != 200:
+            return []
         try:
-            r = requests.get(url, timeout=10, headers={"User-Agent": UA})
-            if r.status_code != 200:
-                continue
             root = ET.fromstring(r.text)
-            out = []
-            for it in root.findall(".//item")[:limit * 2]:
-                title = (it.findtext("title") or "").strip()
-                title = re.sub(r"\s*-\s*[^-]+$", "", title).strip()
-                link = it.findtext("link") or ""
-                if not title:
-                    continue
-                pub = it.findtext("pubDate") or ""
-                ts = 0
-                try:
-                    ts = datetime.strptime(pub, "%a, %d %b %Y %H:%M:%S %Z").replace(
-                        tzinfo=timezone.utc).timestamp()
-                except Exception:
-                    pass
-                if not _is_fresh(ts):
-                    continue          # Google's after: is approximate — enforce 7d
-                out.append({
-                    "source": "news",
-                    "kind": "headline",
-                    "title": title,
-                    "snippet": "",
-                    "url": link,
-                    "score": 0,
-                    "comments": 0,
-                    "ts": ts,
-                    "tone": _tone(title),
-                    "meta": meta,
-                })
-            if out:
-                return out[:limit]
         except Exception:
-            continue
-    return []
+            return []
+        items = []
+        for it in root.findall(".//item"):
+            title = (it.findtext("title") or "").strip()
+            title = re.sub(r"\s*-\s*[^-]+$", "", title).strip()
+            if not title:
+                continue
+            desc = _html_to_text(it.findtext("description") or "")
+            pub = it.findtext("pubDate") or ""
+            ts = 0
+            try:
+                ts = datetime.strptime(pub, "%a, %d %b %Y %H:%M:%S %Z").replace(
+                    tzinfo=timezone.utc).timestamp()
+            except Exception:
+                pass
+            if not _is_fresh(ts):
+                continue
+            if not _relevant(title, desc, s, ctx):
+                continue
+            items.append({
+                "source": "news",
+                "kind": "headline",
+                "title": title,
+                "snippet": desc[:200],
+                "url": it.findtext("link") or "",
+                "score": 0,
+                "comments": 0,
+                "ts": ts,
+                "tone": _tone(title),
+                "meta": "Google News",
+            })
+        return items
+
+    chain = [
+        (f'"{ctx}" after:{cutoff}', "Google News · fresh"),
+        (f'"{ctx}" (twitter OR viral OR "social media" OR trending)',
+         "Google News · social"),
+        (f'"{ctx}" (share OR shares OR stock OR NSE OR BSE)',
+         "Google News"),
+    ]
+    if ctx != s:
+        neg = " ".join(f'-{w}' for w in _EXCLUDE.get(s, []))
+        chain.append(
+            (f'"{s}" (share OR shares OR stock OR NSE OR BSE) {neg}'.strip(),
+             "Google News")
+        )
+
+    out = []
+    for q, meta in chain:
+        got = _run(q)
+        for it in got:
+            it["meta"] = meta
+            out.append(it)
+        if len(out) >= limit:
+            break
+    return out[:limit]
 
 
 def _x_bearer_token():

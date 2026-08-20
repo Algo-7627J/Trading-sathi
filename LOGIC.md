@@ -184,6 +184,14 @@ Post-Earnings Announcement Drift — un stocks ke liye jinhone **results declare
 Google News `when:7d`, aur har item par ek final age-filter lagta hai. Ek hafte se purani news/tweets
 drop ho jaati hain — purani "news" aaj ke move ka trigger nahi hoti.
 
+**🎯 Ticker disambiguation** — chhote/ambiguous tickers ke liye company ke **asli naam** se search:
+`ACC → "ACC Ltd"` (cement company, US football conference nahi!), `SAIL → "Steel Authority of India"`,
+`IOC → "Indian Oil"` (Olympics nahi), `YES → "Yes Bank"`, `TITAN → "Titan Company"` (anime nahi),
+`M&M → "Mahindra & Mahindra"`, `HAL → "Hindustan Aeronautics"`, … + har query mein stock-context
+words (share/stock/NSE/BSE) + ek **relevance filter** jo bina business-context wali news
+(football, sailing, Olympics) ko drop kar deta hai. ~45 tickers map hain, baaki universe ke liye
+default stock-context query chalti hai.
+
 **Sentiment** — simple bullish/bearish lexicon (buy/breakout/rally vs sell/crash/downgrade + Hinglish
 market slang) har post/headline par tone chip lagata hai. Tab 🟢/🔴/⚪ tallies dikhata hai.
 

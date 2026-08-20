@@ -216,14 +216,19 @@ LOGIC_SOCIAL = """**How the 💬 Social Buzz works:**
 2. **⏱️ 7-day window** — sirf **last 7 days** ka content dikhaya jaata hai (Reddit `t=week`,
    Google News `when:7d`, aur har item par ek final age-filter). Purani khabar/old tweets nahi —
    kyunki ek hafte purani "news" aaj ke move ka trigger nahi ho sakti.
-3. **Sentiment** — each post/headline is scored with a simple bullish/bearish lexicon; the tab shows
+3. **🎯 Ticker disambiguation** — chhote/ambiguous tickers (ACC, SAIL, IOC, YES, TITAN, M&M…) ke
+   liye company ke **asli naam** se search hota hai ("ACC Ltd", "Steel Authority of India",
+   "Indian Oil", "Yes Bank"…) + har query mein stock-context words (share/stock/NSE/BSE) + ek
+   **relevance filter** jo non-business news (football conference, sailing, Olympics) ko drop
+   kar deta hai. ACC = cement company, football team nahi. 😄
+4. **Sentiment** — each post/headline is scored with a simple bullish/bearish lexicon; the tab shows
    🟢 Bullish / 🔴 Bearish / ⚪ Neutral tallies and a per-item tone chip.
-4. **On cards** — Strong Direction & Streak cards show a compact **💬 SOCIAL BUZZ** strip (top 2 items +
+5. **On cards** — Strong Direction & Streak cards show a compact **💬 SOCIAL BUZZ** strip (top 2 items +
    bullish/bearish tally) as *possible triggers* for the move. It is fetched for the top symbols only
    (capped, cached 10 min) so scans stay fast. Toggle it from the sidebar.
-5. **Dedicated tab** — the **💬 Social Buzz** tab lets you search any symbol on demand, shows every item
+6. **Dedicated tab** — the **💬 Social Buzz** tab lets you search any symbol on demand, shows every item
    with score/comments/age, and downloads the list as CSV.
-6. **Best-effort by design** — some sources block cloud IPs (e.g. Reddit). The app reports "source
+7. **Best-effort by design** — some sources block cloud IPs (e.g. Reddit). The app reports "source
    unreachable" instead of silently showing nothing, and everything else keeps working.
 
 > ℹ️ Buzz is **informational only** — it never changes the scan score or signal."""
