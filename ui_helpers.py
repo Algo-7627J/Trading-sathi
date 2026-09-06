@@ -1211,61 +1211,96 @@ def _inr_fmt(n):
     return ",".join(reversed(groups)) + "," + tail
 
 
-def _chg_chip(chg):
+def _chg_chip(chg, pct=None):
+    """Newspaper-style up / down / unchanged chip (₹ change + %)."""
     if chg is None:
         return '<span class="chip chip-gray">—</span>'
-    if chg >= 0:
-        return f'<span class="chip chip-green">▲ ₹{_inr_fmt(chg)}</span>'
-    return f'<span class="chip chip-red">▼ ₹{_inr_fmt(abs(chg))}</span>'
+    pct_txt = f" ({pct:+.2f}%)" if pct is not None else ""
+    if chg > 0:
+        return f'<span class="chip chip-green">▲ ₹{_inr_fmt(chg)}{pct_txt}</span>'
+    if chg < 0:
+        return f'<span class="chip chip-red">▼ ₹{_inr_fmt(abs(chg))}{pct_txt}</span>'
+    return '<span class="chip chip-gray">● Unchanged</span>'
 
 
 def render_jaipur_rates_card(rates):
-    """🇮🇳 Today's Jaipur gold/silver INR rates (per 10g / per kg)."""
+    """📰 Daily newspaper gold/silver INR rates (per 10g / per kg) with vs-yesterday change."""
     date = rates.get("date", "Today")
+    city = rates.get("city") or "Delhi"
     derived = rates.get("source") == "derived"
     usd_inr = rates.get("usd_inr")
 
     src_html = (
         f'<span style="font-size:11px;color:{MUTED};">⚠️ Derived from COMEX × USD/INR'
         f'{" (₹" + f"{usd_inr:,.2f}" + ")" if usd_inr else ""} — indicative, local '
-        f'premium may differ</span>'
+        f'premium may differ from newspaper jewellery rates</span>'
         if derived else
         f'<a href="{rates.get("url", "#")}" target="_blank" rel="noopener noreferrer" '
         f'style="font-size:11px;color:{MUTED};text-decoration:none;border-bottom:1px dotted {BORDER};">'
-        f'Source: GoodReturns · Jaipur ↗</a>'
+        f'Source: GoodReturns · {html_escape(str(city))} (daily newspaper rates) ↗</a>'
     )
 
-    def _tile(icon, label, val, chg, sub):
+    def _tile(icon, label, val, chg, pct, prev, sub):
+        prev_html = (
+            f'<div style="font-size:10.5px;color:{MUTED};margin-top:4px;">Yesterday ₹{_inr_fmt(prev)}</div>'
+            if prev is not None else ""
+        )
         return (
-            f'<div style="flex:1;min-width:120px;background:{GRAY_TINT};border:1px solid {BORDER};'
+            f'<div style="flex:1;min-width:140px;background:{GRAY_TINT};border:1px solid {BORDER};'
             f'border-radius:12px;padding:10px 12px;text-align:center;">'
             f'<div style="font-size:11.5px;font-weight:800;letter-spacing:.5px;color:{MUTED};">'
             f'{icon} {label}</div>'
             f'<div style="font-size:21px;font-weight:800;color:{INK};margin-top:3px;">₹{_inr_fmt(val)}</div>'
             f'<div style="font-size:10.5px;color:{MUTED};margin-top:1px;">{sub}</div>'
-            f'<div style="margin-top:5px;">{_chg_chip(chg)}</div></div>'
+            f'<div style="margin-top:5px;">{_chg_chip(chg, pct)}</div>'
+            f'{prev_html}</div>'
         )
 
     tiles = "".join([
-        _tile("🪙", "GOLD 24K", rates["gold_24k_10g"], rates.get("gold_24k_chg"), "per 10 gram"),
-        _tile("🪙", "GOLD 22K", rates["gold_22k_10g"], rates.get("gold_22k_chg"), "per 10 gram"),
-        _tile("🥈", "SILVER", rates["silver_kg"], rates.get("silver_chg"), "per 1 kg"),
+        _tile("🪙", "GOLD 24K", rates["gold_24k_10g"], rates.get("gold_24k_chg"),
+              rates.get("gold_24k_chg_pct"), rates.get("gold_24k_prev"), "per 10 gram"),
+        _tile("🪙", "GOLD 22K", rates["gold_22k_10g"], rates.get("gold_22k_chg"),
+              rates.get("gold_22k_chg_pct"), rates.get("gold_22k_prev"), "per 10 gram"),
+        _tile("🥈", "SILVER", rates["silver_kg"], rates.get("silver_chg"),
+              rates.get("silver_chg_pct"), rates.get("silver_prev"), "per 1 kg"),
     ])
 
-    # 7-day trend table
+    # 7-day trend table — highlight day-to-day change like a newspaper
     hist = rates.get("history") or []
     rows_html = ""
     if hist:
-        for h in hist:
+        for i, h in enumerate(hist):
+            nxt = hist[i + 1] if i + 1 < len(hist) else None
+
+            def _cell(today_v, prev_v):
+                txt = f"₹{_inr_fmt(today_v)}"
+                if today_v is None:
+                    return f'<td style="padding:4px 10px;text-align:right;">—</td>'
+                if prev_v is None:
+                    return f'<td style="padding:4px 10px;text-align:right;">{txt}</td>'
+                d = int(today_v) - int(prev_v)
+                if d > 0:
+                    col, arrow = GREEN_DARK, "▲"
+                elif d < 0:
+                    col, arrow = RED_DARK, "▼"
+                else:
+                    col, arrow = MUTED, "●"
+                return (f'<td style="padding:4px 10px;text-align:right;">{txt} '
+                        f'<span style="color:{col};font-size:10.5px;font-weight:700;">'
+                        f'{arrow} ₹{_inr_fmt(abs(d))}</span></td>')
+
+            prev24 = nxt.get("gold_24k") if nxt else None
+            prev22 = nxt.get("gold_22k") if nxt else None
+            prevs = nxt.get("silver") if nxt else None
             rows_html += (
                 f'<tr><td style="padding:4px 10px;">{html_escape(str(h.get("date", "")))}</td>'
-                f'<td style="padding:4px 10px;text-align:right;">₹{_inr_fmt(h.get("gold_24k"))}</td>'
-                f'<td style="padding:4px 10px;text-align:right;">₹{_inr_fmt(h.get("gold_22k"))}</td>'
-                f'<td style="padding:4px 10px;text-align:right;">₹{_inr_fmt(h.get("silver"))}</td></tr>'
+                f'{_cell(h.get("gold_24k"), prev24)}'
+                f'{_cell(h.get("gold_22k"), prev22)}'
+                f'{_cell(h.get("silver"), prevs)}</tr>'
             )
     details = (
         f'<details style="margin-top:10px;font-size:12px;color:{MUTED};">'
-        f'<summary style="cursor:pointer;font-weight:700;color:{INK};">📅 7-day trend (Jaipur)</summary>'
+        f'<summary style="cursor:pointer;font-weight:700;color:{INK};">📅 7-day newspaper trend</summary>'
         f'<div style="overflow-x:auto;margin-top:6px;">'
         f'<table style="border-collapse:collapse;width:100%;font-size:12px;color:{INK};">'
         f'<tr style="color:{MUTED};font-size:11px;text-align:left;">'
@@ -1280,9 +1315,10 @@ def render_jaipur_rates_card(rates):
     st.markdown(f"""
     <div class="opl-card" style="padding:12px 14px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-            <span style="font-size:14px;font-weight:800;color:{HEADING};">🇮🇳 Jaipur Bullion Rates (INR)</span>
-            <span style="font-size:12px;color:{MUTED};font-weight:700;">{html_escape(str(date))}</span>
+            <span style="font-size:14px;font-weight:800;color:{HEADING};">📰 Daily Newspaper Rates — Gold &amp; Silver (INR)</span>
+            <span style="font-size:12px;color:{MUTED};font-weight:700;">{html_escape(str(city))} · {html_escape(str(date))}</span>
         </div>
+        <div style="font-size:11.5px;color:{MUTED};margin-top:2px;">24K &amp; 22K gold per 10 gram · silver per kg · change vs previous newspaper day</div>
         <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">{tiles}</div>
         <div style="margin-top:8px;">{src_html}</div>
         {details}

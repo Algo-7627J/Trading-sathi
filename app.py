@@ -147,7 +147,7 @@ from delivery import (
 )
 from commodities import get_metal_report
 from momentum import (
-    scan_strong_direction, scan_consecutive,
+    scan_strong_direction, scan_consecutive, common_stocks_across_scans,
     render_momentum_card, render_streak_card,
 )
 from ai_analysis import analyze_moves, get_news_bulk, analyze_metals
@@ -853,7 +853,7 @@ else:
                            "Momentum = EMA trend + MACD + RSI + volume + 16-pattern detection, then 20-day breakout logic. "
                            "🤖 AI analysis below each panel explains the likely reason behind the move.")
 
-            # 🇮🇳 Jaipur daily bullion rates (INR) — scraped from GoodReturns
+            # 📰 Daily newspaper gold/silver rates (INR) — Delhi first, then Chandigarh/Jaipur
             try:
                 jaipur_rates = get_jaipur_rates()
             except Exception:
@@ -861,7 +861,7 @@ else:
             if jaipur_rates:
                 render_jaipur_rates_card(jaipur_rates)
             else:
-                st.caption("🇮🇳 Jaipur INR rates unavailable right now — showing COMEX USD prices below.")
+                st.caption("📰 Newspaper INR rates unavailable right now — showing COMEX USD prices below.")
 
             mc = st.session_state.get("metal_cache")
             if not mc or _time.time() - mc["ts"] > 900:
@@ -1283,6 +1283,47 @@ else:
                                                          buzz=sd_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
                 else:
                     st.dataframe(down, use_container_width=True, hide_index=True)
+
+                st.divider()
+                section_label("⭐ Common stocks — appear in multiple results")
+                st.caption("Strong Direction stocks that **also** show up in Intraday / Next-Day / Streak / PEAD / Delivery. "
+                           "Run those tabs too — overlapping names are the highest-conviction confluence.")
+                extra = [
+                    ("Intraday", st.session_state.get("last_scan_df")),
+                    ("Next-Day", st.session_state.get("next_day_df")),
+                    ("Streak", st.session_state.get("streak_df")),
+                    ("PEAD", st.session_state.get("pead_df")),
+                    ("Delivery", st.session_state.get("delivery_live")),
+                ]
+                common_df = common_stocks_across_scans(sd_df, extra)
+                other_ran = any(df is not None and hasattr(df, "empty") and not df.empty for _, df in extra)
+                if common_df is not None and not common_df.empty:
+                    render_count_tile("COMMON ACROSS SCANS", len(common_df), "green", "⭐")
+                    if view == "Cards":
+                        for _, r in common_df.iterrows():
+                            tags = r.get("ScanList") or str(r.get("Scans", "")).split(" · ")
+                            chips = " ".join(
+                                f'<span class="chip chip-{"green" if t == "Strong Direction" else "gray"}">{t}</span>'
+                                for t in tags if t
+                            )
+                            st.markdown(
+                                f'<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 4px 2px;">{chips}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            a = sd_analyses.get(r["Symbol"], {})
+                            st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news"),
+                                                             buzz=sd_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
+                    else:
+                        show = [c for c in ["Symbol", "Direction", "LTP", "1D %", "1W %", "1M %", "Avg %", "Scans"]
+                                if c in common_df.columns]
+                        st.dataframe(common_df[show], use_container_width=True, hide_index=True)
+                    st.download_button("⬇️ Download common stocks CSV",
+                                       common_df.drop(columns=["ScanList"], errors="ignore").to_csv(index=False).encode(),
+                                       "strong_direction_common.csv", "text/csv", key="sd_common_csv")
+                elif other_ran:
+                    st.caption("No overlapping names between Strong Direction and the other scan results right now.")
+                else:
+                    st.info("Run **Intraday**, **Next-Day** or **Streak** as well — stocks that appear in more than one result will list here.")
 
                 st.download_button("⬇️ Download CSV", sd_df.to_csv(index=False).encode(), "strong_direction.csv", "text/csv")
             elif sd_df is not None:

@@ -292,6 +292,56 @@ def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
     return pd.DataFrame(rows)
 
 
+def common_stocks_across_scans(sd_df, extra_frames):
+    """Strong Direction stocks that also appear in other scan results.
+
+    extra_frames: iterable of (label, dataframe_or_none).
+    Returns a DataFrame with Symbol, Direction, LTP, Avg %, Scans, ScanCount.
+    """
+    if sd_df is None or getattr(sd_df, "empty", True):
+        return pd.DataFrame()
+    if "Symbol" not in sd_df.columns:
+        return pd.DataFrame()
+
+    others = {}
+    for label, df in extra_frames or []:
+        if df is None or getattr(df, "empty", True) or "Symbol" not in getattr(df, "columns", []):
+            continue
+        for s in df["Symbol"].dropna().astype(str).str.upper().tolist():
+            others.setdefault(s, [])
+            if label not in others[s]:
+                others[s].append(label)
+
+    rows = []
+    for _, r in sd_df.iterrows():
+        sym = str(r.get("Symbol", "")).upper().strip()
+        if not sym:
+            continue
+        tags = ["Strong Direction"] + others.get(sym, [])
+        if len(tags) < 2:
+            continue
+        rows.append({
+            "Symbol": r["Symbol"],
+            "LTP": r.get("LTP"),
+            "Direction": r.get("Direction"),
+            "1D %": r.get("1D %"),
+            "1W %": r.get("1W %"),
+            "1M %": r.get("1M %"),
+            "Avg %": r.get("Avg %"),
+            "DeliveryPct": r.get("DeliveryPct"),
+            "Genuineness": r.get("Genuineness", ""),
+            "RSI": r.get("RSI"),
+            "VolRatio": r.get("VolRatio"),
+            "Scans": " · ".join(tags),
+            "ScanCount": len(tags),
+            "ScanList": tags,
+        })
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows).sort_values(["ScanCount", "Avg %"], ascending=[False, False])
+    return out.reset_index(drop=True)
+
+
 def scan_consecutive(fyers, symbols, min_streak=5, progress=None):
     """Stocks that closed up (or down) for >= min_streak consecutive days.
 

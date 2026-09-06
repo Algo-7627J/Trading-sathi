@@ -79,9 +79,11 @@ Data: Yahoo Finance COMEX futures (`GC=F`, `SI=F`).
 6. **🤖 AI analysis** (har panel ke neeche): rule-based analyst note (ya LLM, agar secret key hai) jo
    consensus, breakout state, RSI, ATR aur support/resistance se move ki *likely reason* likhta hai +
    **fresh news headlines (≤7 din)** possible trigger ke roop mein + free Gemini deep-link.
-7. **🇮🇳 Jaipur INR rates**: tab mein aaj ke **Jaipur bullion rates** bhi dikhte hain — 24K/22K gold
-   per 10 gram aur silver per kg, din ka change aur 7-din ka trend (source: GoodReturns city pages,
-   3h cache). Source fail ho toh **COMEX × USD/INR se derived** rates, clearly marked.
+7. **📰 Daily newspaper INR rates**: tab mein aaj ke **newspaper-style bullion rates** (Delhi first —
+   jo most Indian dailies print karti hain — phir Chandigarh / Jaipur) — 24K/22K gold per 10 gram aur
+   silver per kg. **Change = aaj vs pichhla newspaper day** (▲ up / ▼ down / ● unchanged, ₹ + %),
+   yesterday ka rate, aur 7-din ka trend arrows ke saath (source: GoodReturns city pages, 3h cache).
+   Source fail ho toh **COMEX × USD/INR se derived** rates, clearly marked.
 
 > Strongest setup = sab 5 arrows same direction **aur** volume-confirmed breakout.
 
@@ -130,6 +132,9 @@ Steps:
    Mixed = excluded.
 5. Context: **Delivery %** (genuineness), **RSI**, **volume ratio** → AI analysis ke inputs.
 6. **AI analysis** + news + Gemini link (neeche section 11 dekho).
+7. **⭐ Common stocks**: Strong Direction ke names jo **dusre scans** (Intraday / Next-Day / Streak /
+   PEAD / Delivery) mein bhi aate hain — multi-result overlap = higher conviction. Un tabs ko bhi
+   chalao taaki names match ho sakein.
 
 ---
 

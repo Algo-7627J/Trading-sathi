@@ -101,9 +101,11 @@ LOGIC_METALS = """**What it does:** multi-timeframe forecast for Gold & Silver C
 **How to read it:** strongest setups = all 5 arrows pointing the same way **and** a volume-confirmed breakout.
 If Yahoo is unreachable, the panel is clearly marked *SIMULATED*.
 
-**🇮🇳 Jaipur INR rates:** the tab also shows today's **Jaipur bullion rates in rupees** — 24K & 22K gold
-per 10 gram and silver per kg, with the day's change and a 7-day trend (source: GoodReturns city pages,
-cached 3 h). If that source is unreachable, rates are **derived from COMEX × USD/INR** and clearly marked.
+**📰 Daily newspaper INR rates:** the tab also shows today's **newspaper-style bullion rates in rupees**
+(Delhi first — the figure most Indian dailies print — then Chandigarh / Jaipur): 24K & 22K gold per 10 gram
+and silver per kg. **Change is today vs the previous newspaper day** (▲ up / ▼ down / ● unchanged, with ₹
+and %), plus yesterday's rate and a 7-day trend with day-to-day arrows. Source: GoodReturns city pages
+(cached 3 h). If that source is unreachable, rates are **derived from COMEX × USD/INR** and clearly marked.
 
 **🤖 AI analysis (under each panel):** a rule-based analyst note (LLM if a key is set in secrets) explains
 the *likely reason* behind gold/silver's move — using the consensus score, breakout state, RSI, ATR and
@@ -163,7 +165,10 @@ timeframes — a clean, high-conviction directional bias.
    (participation) — these feed the AI analysis.
 6. **AI analysis:** a rule-based narrative (or a real LLM if a key is set in secrets) + the latest news
    headlines, plus a "Full AI analysis on Gemini" button that opens Google AI Studio with a pre-filled
-   prompt (free, no key)."""
+   prompt (free, no key).
+7. **⭐ Common stocks:** after the Strong Up / Strong Down lists, stocks that also appear in **other
+   scan results** (Intraday, Next-Day, Streak, PEAD, Delivery) are listed separately — multi-scan
+   overlap = higher-conviction confluence. Run those tabs as well so names can match."""
 
 # ====================== TAB 8 — STREAK MOVERS ======================
 LOGIC_STREAK = """**What it does:** finds stocks that have closed **up (or down) for N days in a row** — persistent
