@@ -28,14 +28,10 @@ except Exception:
 
 from analysis import to_fyers_symbol
 from delivery import fetch_delivery_frame, delivery_map, delivery_date
-from social_buzz import buzz_section_html
-from ui_helpers import (
-    GREEN, GREEN_DARK, RED, RED_DARK, MUTED, INK,
-    GRAY_TINT, GREEN_TINT, NEUT_BAR, BORDER,
-    _fmt_money, _chip,
-    genuineness_chip, delivery_line,
-    fyers_wrap, news_links, gemini_ai_link,
-)
+
+# ui_helpers / social_buzz import streamlit — importing them at module load
+# can circular-crash Streamlit Cloud (`from momentum import ...` in app.py).
+# Pull them lazily inside the render functions.
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -455,21 +451,34 @@ def scan_consecutive(fyers, symbols, min_streak=5, progress=None):
 
 
 # ====================== RENDER HELPERS (single-line HTML, Groww style) ======================
-def _pct_cell(v, label):
+def _ui():
+    """Lazy import — ui_helpers/social_buzz pull streamlit and can circular-crash boot."""
+    from social_buzz import buzz_section_html
+    from ui_helpers import (
+        GREEN_DARK, RED_DARK, MUTED, INK, GRAY_TINT,
+        _fmt_money, _chip, genuineness_chip, delivery_line,
+        fyers_wrap, news_links, gemini_ai_link,
+    )
+    return (GREEN_DARK, RED_DARK, MUTED, INK, GRAY_TINT,
+            _fmt_money, _chip, genuineness_chip, delivery_line,
+            fyers_wrap, news_links, gemini_ai_link, buzz_section_html)
+
+
+def _pct_cell(v, label, GREEN_DARK, RED_DARK, GRAY_TINT, MUTED):
     c = GREEN_DARK if v >= 0 else RED_DARK
     return (f'<div style="flex:1;text-align:center;background:{GRAY_TINT};border-radius:8px;padding:6px 4px;">'
             f'<div style="font-size:11px;color:{MUTED};">{label}</div>'
             f'<div style="font-size:15px;font-weight:700;color:{c};">{v:+.2f}%</div></div>')
 
 
-def _analysis_box(text):
+def _analysis_box(text, GRAY_TINT, INK):
     if not text:
         return ""
     return (f'<div style="margin-top:9px;background:{GRAY_TINT};border-radius:8px;padding:8px 11px;'
             f'font-size:12.5px;color:{INK};line-height:1.55;">\U0001F4A1 {_html.escape(str(text))}</div>')
 
 
-def _meta_line(dp, genuineness):
+def _meta_line(dp, genuineness, delivery_line, genuineness_chip):
     dl = delivery_line(dp)
     gc = genuineness_chip(genuineness) if genuineness else ""
     if not dl and not gc:
@@ -478,6 +487,9 @@ def _meta_line(dp, genuineness):
 
 
 def render_momentum_card(row, analysis=None, news=None, buzz=None):
+    (GREEN_DARK, RED_DARK, MUTED, INK, GRAY_TINT,
+     _fmt_money, _chip, genuineness_chip, delivery_line,
+     fyers_wrap, news_links, gemini_ai_link, buzz_section_html) = _ui()
     symbol = row["Symbol"]
     d1, w1, m1 = row["1D %"], row["1W %"], row["1M %"]
     direction = str(row["Direction"])
@@ -491,9 +503,11 @@ def render_momentum_card(row, analysis=None, news=None, buzz=None):
             f'<div style="display:flex;align-items:center;gap:8px;">{_chip(direction, tone)}'
             f'<span class="opl-price">{ltp}</span></div></div>'
             f'<div style="display:flex;gap:8px;margin-top:10px;">'
-            f'{_pct_cell(d1, "1 Day")}{_pct_cell(w1, "1 Week")}{_pct_cell(m1, "1 Month")}</div>'
-            f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""))}'
-            f'{_analysis_box(analysis)}')
+            f'{_pct_cell(d1, "1 Day", GREEN_DARK, RED_DARK, GRAY_TINT, MUTED)}'
+            f'{_pct_cell(w1, "1 Week", GREEN_DARK, RED_DARK, GRAY_TINT, MUTED)}'
+            f'{_pct_cell(m1, "1 Month", GREEN_DARK, RED_DARK, GRAY_TINT, MUTED)}</div>'
+            f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""), delivery_line, genuineness_chip)}'
+            f'{_analysis_box(analysis, GRAY_TINT, INK)}')
 
     card = (f'<div class="opl-card {side}">{fyers_wrap(symbol, main)}'
             f'{news_links(news)}{buzz_section_html(buzz)}{gemini_ai_link(symbol)}</div>')
@@ -501,6 +515,9 @@ def render_momentum_card(row, analysis=None, news=None, buzz=None):
 
 
 def render_streak_card(row, analysis=None, news=None, buzz=None):
+    (GREEN_DARK, RED_DARK, MUTED, INK, GRAY_TINT,
+     _fmt_money, _chip, genuineness_chip, delivery_line,
+     fyers_wrap, news_links, gemini_ai_link, buzz_section_html) = _ui()
     symbol = row["Symbol"]
     streak = int(row["Streak"])
     direction = str(row["Direction"])
@@ -520,8 +537,8 @@ def render_streak_card(row, analysis=None, news=None, buzz=None):
             f'<span style="font-size:12.5px;color:{MUTED};">{streak} consecutive {direction.lower()} closes'
             f'{" · " + asof if asof else ""}</span>'
             f'<span style="font-size:14px;font-weight:700;color:{GREEN_DARK if is_up else RED_DARK};">{move_txt}</span></div>'
-            f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""))}'
-            f'{_analysis_box(analysis)}')
+            f'{_meta_line(row.get("DeliveryPct"), row.get("Genuineness", ""), delivery_line, genuineness_chip)}'
+            f'{_analysis_box(analysis, GRAY_TINT, INK)}')
 
     card = (f'<div class="opl-card {side}">{fyers_wrap(symbol, main)}'
             f'{news_links(news)}{buzz_section_html(buzz)}{gemini_ai_link(symbol)}</div>')
