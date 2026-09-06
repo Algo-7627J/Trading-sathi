@@ -16,7 +16,7 @@ RAO SAHAB ek Streamlit-based smart scanner hai jo intraday aur max 2-day holding
 - Real fundamentals & quarterly results (via Screener.in, best-effort)
 - Sector-wise results view with tabs, Strong Buy/Strong Sell always shown first, as bar charts
 - **Next-Day Outlook**: daily-candle based, backtested next-day direction calls
-- **Strong Direction (🧭)**: stocks whose momentum is aligned in the same direction across 1-Day, 1-Week & 1-Month timeframes
+- **Strong Direction (🧭)**: stocks whose momentum is aligned in the same direction across 1-Day, 1-Week & 1-Month timeframes, plus **⭐ Common stocks** = Intraday Scanner ∩ Next-Day Outlook ∩ Strong Direction
 - **Streak Movers (🔥)**: stocks closing up (or down) for N consecutive days
 - **AI-generated analysis**: every Strong Direction / Streak card now explains the *likely reason* behind the move (real LLM if a key is set, else a rule-based narrative) + latest news headlines (Google News) — and the **🥇 Gold & Silver tab** gets the same treatment: an 🤖 AI analysis card under each metal panel (rule-based/LLM narrative + fresh ≤7-day commodity news + free Gemini deep-link)
 - **📰 Daily newspaper INR rates**: today's **newspaper-style gold/silver rates in rupees** on the Gold & Silver tab (Delhi first, then Chandigarh/Jaipur) — 24K & 22K gold per 10g, silver per kg, with **▲/▼ change vs the previous newspaper day** (₹ and %) plus a 7-day trend (GoodReturns city pages; COMEX × USD/INR fallback)

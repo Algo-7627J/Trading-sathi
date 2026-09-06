@@ -161,9 +161,10 @@ timeframes — a clean, high-conviction directional bias.
 3. A direction counts only if the move exceeds ±0.2% (noise filter).
 4. **Strong Up** = all three positive **and** each ≥ your min-move setting (default 0.5%);
    **Strong Down** = all three negative.
-5. **⭐ Common stocks (shown first):** names that appear in **all three** timeframe result lists
-   (1D + 1W + 1M, same direction). The 1D / 1W / 1M lists are the individual results; common is
-   their overlap. 2-of-3 aligned names are listed separately as “almost common”.
+5. **⭐ Common stocks (shown first):** names that appear in **all three tabs** —
+   Intraday Scanner (Buy/Sell) **and** Next-Day Outlook (Bullish/Bearish) **and** Strong Direction
+   (Strong Up/Down). Neutral calls are skipped. **Aligned Bullish** = all three bullish,
+   **Aligned Bearish** = all three bearish, **Mixed signals** = they disagree.
 6. Context added per stock: **Delivery %** (genuineness), **RSI** (overbought/oversold), **volume ratio**
    (participation) — these feed the AI analysis.
 7. **AI analysis:** a rule-based narrative (or a real LLM if a key is set in secrets) + the latest news

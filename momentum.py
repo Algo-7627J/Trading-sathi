@@ -303,34 +303,85 @@ def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
     return pd.DataFrame(rows)
 
 
-def common_stocks_across_scans(sd_df, extra_frames):
-    """Strong Direction stocks that also appear in other scan results.
+def _row_map(df):
+    """Uppercased Symbol -> first row as dict."""
+    if df is None or getattr(df, "empty", True) or "Symbol" not in getattr(df, "columns", []):
+        return {}
+    out = {}
+    for _, r in df.iterrows():
+        s = str(r.get("Symbol", "")).upper().strip()
+        if s and s not in out:
+            out[s] = r
+    return out
 
-    extra_frames: iterable of (label, dataframe_or_none).
-    Returns a DataFrame with Symbol, Direction, LTP, Avg %, Scans, ScanCount.
+
+def _intraday_side(row):
+    sig = str(row.get("Signal", "") or "").lower()
+    if "buy" in sig or "bullish" in sig:
+        return "bull"
+    if "sell" in sig or "bearish" in sig:
+        return "bear"
+    return "flat"
+
+
+def _nextday_side(row):
+    bias = str(row.get("Bias", "") or row.get("Outlook", "") or "").lower()
+    if "bullish" in bias:
+        return "bull"
+    if "bearish" in bias:
+        return "bear"
+    return "flat"
+
+
+def _sd_side(row):
+    d = str(row.get("Direction", "") or "")
+    if "Up" in d:
+        return "bull"
+    if "Down" in d:
+        return "bear"
+    return "flat"
+
+
+def common_intraday_nextday_sd(id_df, nd_df, sd_df):
+    """Stocks that appear in Intraday Scanner AND Next-Day Outlook AND Strong Direction.
+
+    Strong Direction side uses Strong Up / Strong Down only (the actual SD picks).
+    Intraday / Next-Day must also be a real call (Buy/Sell or Bullish/Bearish) — Neutral skip.
+
+    Extra columns: Intraday, NextDay, SD, Align (Aligned Bullish / Aligned Bearish / Mixed signals).
     """
-    if sd_df is None or getattr(sd_df, "empty", True):
-        return pd.DataFrame()
-    if "Symbol" not in sd_df.columns:
-        return pd.DataFrame()
+    if sd_df is None or getattr(sd_df, "empty", True) or "Symbol" not in getattr(sd_df, "columns", []):
+        return pd.DataFrame(), ["Strong Direction"]
+    missing = []
+    if id_df is None or getattr(id_df, "empty", True):
+        missing.append("Intraday Scanner")
+    if nd_df is None or getattr(nd_df, "empty", True):
+        missing.append("Next-Day Outlook")
+    if missing:
+        return pd.DataFrame(), missing
 
-    others = {}
-    for label, df in extra_frames or []:
-        if df is None or getattr(df, "empty", True) or "Symbol" not in getattr(df, "columns", []):
-            continue
-        for s in df["Symbol"].dropna().astype(str).str.upper().tolist():
-            others.setdefault(s, [])
-            if label not in others[s]:
-                others[s].append(label)
+    id_map = _row_map(id_df)
+    nd_map = _row_map(nd_df)
+    sd_hits = sd_df[sd_df["Direction"].isin(["Strong Up", "Strong Down"])] if "Direction" in sd_df.columns else sd_df
 
     rows = []
-    for _, r in sd_df.iterrows():
+    for _, r in sd_hits.iterrows():
         sym = str(r.get("Symbol", "")).upper().strip()
-        if not sym:
+        if not sym or sym not in id_map or sym not in nd_map:
             continue
-        tags = ["Strong Direction"] + others.get(sym, [])
-        if len(tags) < 2:
+        ir, nr = id_map[sym], nd_map[sym]
+        id_side, nd_side, sd_side = _intraday_side(ir), _nextday_side(nr), _sd_side(r)
+        # skip if intraday or next-day is just Neutral / no call
+        if id_side == "flat" or nd_side == "flat":
             continue
+        if id_side == nd_side == sd_side == "bull":
+            align = "Aligned Bullish"
+        elif id_side == nd_side == sd_side == "bear":
+            align = "Aligned Bearish"
+        else:
+            align = "Mixed signals"
+        id_label = str(ir.get("Signal", "") or "—")
+        nd_label = str(nr.get("Outlook", "") or nr.get("Bias", "") or "—")
         rows.append({
             "Symbol": r["Symbol"],
             "LTP": r.get("LTP"),
@@ -343,14 +394,19 @@ def common_stocks_across_scans(sd_df, extra_frames):
             "Genuineness": r.get("Genuineness", ""),
             "RSI": r.get("RSI"),
             "VolRatio": r.get("VolRatio"),
-            "Scans": " · ".join(tags),
-            "ScanCount": len(tags),
-            "ScanList": tags,
+            "Intraday": id_label,
+            "NextDay": nd_label,
+            "SD": r.get("Direction"),
+            "Align": align,
+            "ScanList": ["Intraday", "Next-Day", "Strong Direction"],
         })
     if not rows:
-        return pd.DataFrame()
-    out = pd.DataFrame(rows).sort_values(["ScanCount", "Avg %"], ascending=[False, False])
-    return out.reset_index(drop=True)
+        return pd.DataFrame(), []
+    out = pd.DataFrame(rows)
+    order = {"Aligned Bullish": 0, "Aligned Bearish": 1, "Mixed signals": 2}
+    out["_ord"] = out["Align"].map(order).fillna(9)
+    out = out.sort_values(["_ord", "Avg %"], ascending=[True, False]).drop(columns=["_ord"])
+    return out.reset_index(drop=True), []
 
 
 def scan_consecutive(fyers, symbols, min_streak=5, progress=None):

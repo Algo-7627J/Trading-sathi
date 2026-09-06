@@ -129,8 +129,8 @@ Steps:
 2. **1D** = last session, **1W** = 5 sessions, **1M** = 21 sessions ka % move.
 3. Direction sirf tab count hoti hai jab move > ±0.2% (noise filter).
 4. **Strong Up** = teeno positive **aur** har ek ≥ min-move (default 0.5%); **Strong Down** = teeno negative.
-5. **⭐ Common stocks (sabse upar):** 1D + 1W + 1M teeno lists mein common names (same direction).
-   1D / 1W / 1M ke alag results bhi dikhte hain; 2-of-3 aligned = almost common.
+5. **⭐ Common stocks (sabse upar):** Intraday Scanner (Buy/Sell) ∩ Next-Day Outlook (Bullish/Bearish) ∩
+   Strong Direction (Strong Up/Down). Neutral skip. Aligned Bullish / Aligned Bearish / Mixed signals.
 6. Context: **Delivery %** (genuineness), **RSI**, **volume ratio** → AI analysis ke inputs.
 7. **AI analysis** + news + Gemini link (neeche section 11 dekho).
 
