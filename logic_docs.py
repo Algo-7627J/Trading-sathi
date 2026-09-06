@@ -160,15 +160,15 @@ timeframes — a clean, high-conviction directional bias.
 2. Compute % moves: **1D** = last session, **1W** = last 5 sessions, **1M** = last 21 sessions.
 3. A direction counts only if the move exceeds ±0.2% (noise filter).
 4. **Strong Up** = all three positive **and** each ≥ your min-move setting (default 0.5%);
-   **Strong Down** = all three negative. Anything mixed is excluded.
-5. Context added per stock: **Delivery %** (genuineness), **RSI** (overbought/oversold), **volume ratio**
+   **Strong Down** = all three negative.
+5. **⭐ Common stocks (shown first):** names that appear in **all three** timeframe result lists
+   (1D + 1W + 1M, same direction). The 1D / 1W / 1M lists are the individual results; common is
+   their overlap. 2-of-3 aligned names are listed separately as “almost common”.
+6. Context added per stock: **Delivery %** (genuineness), **RSI** (overbought/oversold), **volume ratio**
    (participation) — these feed the AI analysis.
-6. **AI analysis:** a rule-based narrative (or a real LLM if a key is set in secrets) + the latest news
+7. **AI analysis:** a rule-based narrative (or a real LLM if a key is set in secrets) + the latest news
    headlines, plus a "Full AI analysis on Gemini" button that opens Google AI Studio with a pre-filled
-   prompt (free, no key).
-7. **⭐ Common stocks:** after the Strong Up / Strong Down lists, stocks that also appear in **other
-   scan results** (Intraday, Next-Day, Streak, PEAD, Delivery) are listed separately — multi-scan
-   overlap = higher-conviction confluence. Run those tabs as well so names can match."""
+   prompt (free, no key)."""
 
 # ====================== TAB 8 — STREAK MOVERS ======================
 LOGIC_STREAK = """**What it does:** finds stocks that have closed **up (or down) for N days in a row** — persistent

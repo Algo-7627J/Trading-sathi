@@ -129,12 +129,10 @@ Steps:
 2. **1D** = last session, **1W** = 5 sessions, **1M** = 21 sessions ka % move.
 3. Direction sirf tab count hoti hai jab move > ±0.2% (noise filter).
 4. **Strong Up** = teeno positive **aur** har ek ≥ min-move (default 0.5%); **Strong Down** = teeno negative.
-   Mixed = excluded.
-5. Context: **Delivery %** (genuineness), **RSI**, **volume ratio** → AI analysis ke inputs.
-6. **AI analysis** + news + Gemini link (neeche section 11 dekho).
-7. **⭐ Common stocks**: Strong Direction ke names jo **dusre scans** (Intraday / Next-Day / Streak /
-   PEAD / Delivery) mein bhi aate hain — multi-result overlap = higher conviction. Un tabs ko bhi
-   chalao taaki names match ho sakein.
+5. **⭐ Common stocks (sabse upar):** 1D + 1W + 1M teeno lists mein common names (same direction).
+   1D / 1W / 1M ke alag results bhi dikhte hain; 2-of-3 aligned = almost common.
+6. Context: **Delivery %** (genuineness), **RSI**, **volume ratio** → AI analysis ke inputs.
+7. **AI analysis** + news + Gemini link (neeche section 11 dekho).
 
 ---
 

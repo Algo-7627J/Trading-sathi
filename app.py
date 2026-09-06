@@ -1189,10 +1189,10 @@ else:
         with tab7:
             render_logic_expander("📖 How Strong Direction works", LOGIC["strong_direction"])
             render_logic_expander("🤖 How the AI analysis works", LOGIC["ai"])
-            section_label("🧭 Strong Direction — 1D · 1W · 1M Aligned")
-            st.caption("Stocks whose momentum points the **same way** across the 1-day, 1-week and 1-month "
-                       "timeframes. All three green = Strong Up, all three red = Strong Down — a clean, "
-                       "high-conviction directional bias. Built from ~1 year of daily candles.")
+            section_label("🧭 Strong Direction — 1D · 1W · 1M + ⭐ Common stocks")
+            st.caption("Scan 1-day, 1-week and 1-month momentum. **⭐ Common stocks** = names that appear in "
+                       "**all three** result lists (same direction). 1D / 1W / 1M ke alag results bhi dikhte hain. "
+                       "Built from ~1 year of daily candles.")
 
             sd1, sd2, sd3 = st.columns([2, 1, 1])
             with sd1:
@@ -1224,15 +1224,16 @@ else:
                 sd_df = scan_strong_direction(st.session_state.fyers, sd_chosen, min_move=sd_min, progress=prog)
                 prog.empty()
                 st.session_state.strong_direction_df = sd_df
-                if sd_df is not None and not sd_df.empty:
+                common_for_ai = sd_df[sd_df["Direction"].isin(["Strong Up", "Strong Down"])] if sd_df is not None and not sd_df.empty else sd_df
+                if common_for_ai is not None and not common_for_ai.empty:
                     with st.spinner("Fetching news & generating AI analysis…"):
-                        st.session_state.sd_analysis = analyze_moves(sd_df.to_dict("records"), kind="momentum")
+                        st.session_state.sd_analysis = analyze_moves(common_for_ai.to_dict("records"), kind="momentum")
                 else:
                     st.session_state.sd_analysis = {}
-                # 💬 Social buzz for the top movers (possible move-triggers).
-                if st.session_state.get("buzz_on_cards", True) and sd_df is not None and not sd_df.empty:
+                # 💬 Social buzz for the top common movers (possible move-triggers).
+                if st.session_state.get("buzz_on_cards", True) and common_for_ai is not None and not common_for_ai.empty:
                     try:
-                        top_syms = list(sd_df["Symbol"].astype(str).head(8))
+                        top_syms = list(common_for_ai["Symbol"].astype(str).head(8))
                         with st.spinner("Fetching social buzz (Reddit + news)…"):
                             st.session_state.sd_buzz = fetch_buzz_bulk(top_syms, per_source=3)
                     except Exception:
@@ -1244,50 +1245,34 @@ else:
             if sd_df is not None and not sd_df.empty:
                 sd_analyses = st.session_state.get("sd_analysis", {})
                 sd_buzz = st.session_state.get("sd_buzz", {})
-                st.caption("💡 **AI analysis** explains the likely reason behind each move (LLM if a key is set in "
-                           "secrets, else rule-based) + latest news headlines. **💬 Social Buzz** flags what people "
-                           "are saying on Reddit/news (last 7 days) as possible triggers. **Delivery %** = genuineness of the "
-                           "move — high delivery = real conviction, low = speculative intraday churn.")
+                st.caption("💡 **⭐ Common stocks** = same direction on **1D + 1W + 1M** (the overlap of the three "
+                           "timeframe lists). 1D / 1W / 1M lists below are the individual results. "
+                           "If you also ran Intraday / Next-Day / Streak, extra chips show that overlap too.")
 
                 up = sd_df[sd_df["Direction"] == "Strong Up"].sort_values("Avg %", ascending=False)
                 down = sd_df[sd_df["Direction"] == "Strong Down"].sort_values("Avg %", ascending=True)
+                common_df = pd.concat([up, down], ignore_index=True) if (not up.empty or not down.empty) else up
+                two_up = sd_df[sd_df["Direction"] == "2/3 Up"].sort_values("Avg %", ascending=False) if "Direction" in sd_df.columns else sd_df.head(0)
+                two_dn = sd_df[sd_df["Direction"] == "2/3 Down"].sort_values("Avg %", ascending=True) if "Direction" in sd_df.columns else sd_df.head(0)
+                d1_up = sd_df[sd_df.get("Dir1D", pd.Series(dtype=str)) == "up"].sort_values("1D %", ascending=False) if "Dir1D" in sd_df.columns else sd_df.head(0)
+                d1_dn = sd_df[sd_df.get("Dir1D", pd.Series(dtype=str)) == "down"].sort_values("1D %", ascending=True) if "Dir1D" in sd_df.columns else sd_df.head(0)
+                w1_up = sd_df[sd_df.get("Dir1W", pd.Series(dtype=str)) == "up"].sort_values("1W %", ascending=False) if "Dir1W" in sd_df.columns else sd_df.head(0)
+                w1_dn = sd_df[sd_df.get("Dir1W", pd.Series(dtype=str)) == "down"].sort_values("1W %", ascending=True) if "Dir1W" in sd_df.columns else sd_df.head(0)
+                m1_up = sd_df[sd_df.get("Dir1M", pd.Series(dtype=str)) == "up"].sort_values("1M %", ascending=False) if "Dir1M" in sd_df.columns else sd_df.head(0)
+                m1_dn = sd_df[sd_df.get("Dir1M", pd.Series(dtype=str)) == "down"].sort_values("1M %", ascending=True) if "Dir1M" in sd_df.columns else sd_df.head(0)
 
-                s1, s2 = st.columns(2)
-                with s1:
-                    render_count_tile("STRONG UP (1D+1W+1M)", len(up), "green", "🟢")
-                with s2:
-                    render_count_tile("STRONG DOWN (1D+1W+1M)", len(down), "red", "🔴")
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    render_count_tile("⭐ COMMON (1D+1W+1M)", len(common_df), "green", "⭐")
+                with c2:
+                    render_count_tile("STRONG UP", len(up), "green", "🟢")
+                with c3:
+                    render_count_tile("STRONG DOWN", len(down), "red", "🔴")
+                with c4:
+                    render_count_tile("2 OF 3 ALIGNED", len(two_up) + len(two_dn), "gray", "🔶")
 
                 view = st.radio("View Mode", ["Cards", "Table"], horizontal=True, key="sd_view", label_visibility="collapsed")
 
-                st.divider()
-                section_label("🟢 Strong Up — all timeframes bullish")
-                if up.empty:
-                    st.caption("No strong-up stocks found at the current minimum move.")
-                elif view == "Cards":
-                    for _, r in up.iterrows():
-                        a = sd_analyses.get(r["Symbol"], {})
-                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news"),
-                                                         buzz=sd_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
-                else:
-                    st.dataframe(up, use_container_width=True, hide_index=True)
-
-                st.divider()
-                section_label("🔴 Strong Down — all timeframes bearish")
-                if down.empty:
-                    st.caption("No strong-down stocks found at the current minimum move.")
-                elif view == "Cards":
-                    for _, r in down.iterrows():
-                        a = sd_analyses.get(r["Symbol"], {})
-                        st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news"),
-                                                         buzz=sd_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
-                else:
-                    st.dataframe(down, use_container_width=True, hide_index=True)
-
-                st.divider()
-                section_label("⭐ Common stocks — appear in multiple results")
-                st.caption("Strong Direction stocks that **also** show up in Intraday / Next-Day / Streak / PEAD / Delivery. "
-                           "Run those tabs too — overlapping names are the highest-conviction confluence.")
                 extra = [
                     ("Intraday", st.session_state.get("last_scan_df")),
                     ("Next-Day", st.session_state.get("next_day_df")),
@@ -1295,15 +1280,21 @@ else:
                     ("PEAD", st.session_state.get("pead_df")),
                     ("Delivery", st.session_state.get("delivery_live")),
                 ]
-                common_df = common_stocks_across_scans(sd_df, extra)
-                other_ran = any(df is not None and hasattr(df, "empty") and not df.empty for _, df in extra)
-                if common_df is not None and not common_df.empty:
-                    render_count_tile("COMMON ACROSS SCANS", len(common_df), "green", "⭐")
+                overlap_df = common_stocks_across_scans(common_df, extra)
+                overlap_map = {}
+                if overlap_df is not None and not overlap_df.empty:
+                    for _, orow in overlap_df.iterrows():
+                        overlap_map[str(orow["Symbol"]).upper()] = orow.get("ScanList") or []
+
+                def _show_sd_rows(tbl):
+                    if tbl is None or tbl.empty:
+                        st.caption("No stocks in this list at the current minimum move.")
+                        return
                     if view == "Cards":
-                        for _, r in common_df.iterrows():
-                            tags = r.get("ScanList") or str(r.get("Scans", "")).split(" · ")
+                        for _, r in tbl.iterrows():
+                            tags = overlap_map.get(str(r["Symbol"]).upper(), ["1D", "1W", "1M"])
                             chips = " ".join(
-                                f'<span class="chip chip-{"green" if t == "Strong Direction" else "gray"}">{t}</span>'
+                                f'<span class="chip chip-{"green" if t in ("Strong Direction", "1D", "1W", "1M") else "gray"}">{t}</span>'
                                 for t in tags if t
                             )
                             st.markdown(
@@ -1314,22 +1305,64 @@ else:
                             st.markdown(render_momentum_card(r, analysis=a.get("analysis"), news=a.get("news"),
                                                              buzz=sd_buzz.get(str(r["Symbol"]).upper())), unsafe_allow_html=True)
                     else:
-                        show = [c for c in ["Symbol", "Direction", "LTP", "1D %", "1W %", "1M %", "Avg %", "Scans"]
-                                if c in common_df.columns]
-                        st.dataframe(common_df[show], use_container_width=True, hide_index=True)
-                    st.download_button("⬇️ Download common stocks CSV",
-                                       common_df.drop(columns=["ScanList"], errors="ignore").to_csv(index=False).encode(),
-                                       "strong_direction_common.csv", "text/csv", key="sd_common_csv")
-                elif other_ran:
-                    st.caption("No overlapping names between Strong Direction and the other scan results right now.")
+                        show = [c for c in ["Symbol", "Direction", "LTP", "1D %", "1W %", "1M %", "Avg %", "Align"]
+                                if c in tbl.columns]
+                        st.dataframe(tbl[show], use_container_width=True, hide_index=True)
+
+                # ---- COMMON STOCKS FIRST (can't miss it) ----
+                st.divider()
+                section_label("⭐ Common stocks — 1D + 1W + 1M (same direction)")
+                st.caption("Ye woh stocks hain jo **teenon timeframe lists** (1-Day, 1-Week, 1-Month) mein common hain. "
+                           "🟢 = teeno up · 🔴 = teeno down.")
+                if common_df is None or common_df.empty:
+                    st.info("Is scan mein koi stock 1D, 1W aur 1M teeno par same direction mein nahi mila. "
+                            "Neeche 1D / 1W / 1M ke alag results dekho — ya min-move thoda kam karo.")
                 else:
-                    st.info("Run **Intraday**, **Next-Day** or **Streak** as well — stocks that appear in more than one result will list here.")
+                    _show_sd_rows(common_df)
+                    st.download_button("⬇️ Download common stocks CSV",
+                                       common_df.to_csv(index=False).encode(),
+                                       "strong_direction_common.csv", "text/csv", key="sd_common_csv")
+
+                st.divider()
+                section_label("🟢 Strong Up — common & bullish")
+                _show_sd_rows(up)
+
+                st.divider()
+                section_label("🔴 Strong Down — common & bearish")
+                _show_sd_rows(down)
+
+                # ---- multiple results: each timeframe list ----
+                st.divider()
+                section_label("📋 Multiple results — 1D / 1W / 1M lists")
+                st.caption("Har timeframe ka apna result. **Common stocks** upar wahi names hain jo in teeno lists mein aate hain.")
+                tf_cols = [c for c in ["Symbol", "LTP", "1D %", "1W %", "1M %", "Dir1D", "Dir1W", "Dir1M", "Direction"] if c in sd_df.columns]
+
+                def _tf_block(title, up_df, dn_df, up_label, dn_label):
+                    with st.expander(f"{title}  ·  {len(up_df)} up / {len(dn_df)} down", expanded=False):
+                        a, b = st.columns(2)
+                        with a:
+                            render_count_tile(up_label, len(up_df), "green", "🟢")
+                        with b:
+                            render_count_tile(dn_label, len(dn_df), "red", "🔴")
+                        st.markdown(f"**{up_label}**")
+                        st.dataframe(up_df[tf_cols] if not up_df.empty else up_df, use_container_width=True, hide_index=True)
+                        st.markdown(f"**{dn_label}**")
+                        st.dataframe(dn_df[tf_cols] if not dn_df.empty else dn_df, use_container_width=True, hide_index=True)
+
+                _tf_block("1️⃣ 1-Day results", d1_up, d1_dn, "1D UP", "1D DOWN")
+                _tf_block("2️⃣ 1-Week results", w1_up, w1_dn, "1W UP", "1W DOWN")
+                _tf_block("3️⃣ 1-Month results", m1_up, m1_dn, "1M UP", "1M DOWN")
+
+                if not two_up.empty or not two_dn.empty:
+                    with st.expander(f"🔶 2 of 3 aligned ({len(two_up) + len(two_dn)} stocks) — almost common"):
+                        st.dataframe(pd.concat([two_up, two_dn], ignore_index=True)[tf_cols],
+                                     use_container_width=True, hide_index=True)
 
                 st.download_button("⬇️ Download CSV", sd_df.to_csv(index=False).encode(), "strong_direction.csv", "text/csv")
             elif sd_df is not None:
-                st.info("No stocks with all three timeframes aligned at the current minimum move.")
+                st.info("No stocks with a clear 1D / 1W / 1M move at the current minimum. Try lowering min-move.")
             else:
-                st.info("👆 Click **Run Strong Direction Scan** to find stocks aligned across 1D, 1W and 1M.")
+                st.info("👆 Click **Run Strong Direction Scan** — **⭐ Common stocks** (1D+1W+1M overlap) upar dikhega, saath mein 1D / 1W / 1M ke alag results.")
 
         # ==================== TAB 8: CONSECUTIVE STREAK ====================
         with tab8:

@@ -239,9 +239,13 @@ def _delivery_lookup():
 
 # ====================== SCANS ======================
 def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
-    """Stocks whose 1D / 1W / 1M momentum all point the same way.
+    """Multi-timeframe momentum for every symbol.
 
-    Extra columns: DeliveryPct, QtyTraded, DeliverableQty, Genuineness, RSI, VolRatio.
+    Always records 1D / 1W / 1M so the UI can show each list plus the
+    **common** names (same direction on all three). Direction:
+      Strong Up / Strong Down = common (3/3, each ≥ min_move)
+      2/3 Up / 2/3 Down       = two timeframes aligned
+      Mixed                   = split directions
     """
     dmap, _ = _delivery_lookup()
     rows = []
@@ -258,14 +262,17 @@ def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
             if d1 is None or w1 is None or m1 is None:
                 continue
             dirs = [_direction(d1), _direction(w1), _direction(m1)]
-            if dirs == ["up", "up", "up"]:
-                if min(d1, w1, m1) < min_move:
-                    continue
+            n_up, n_dn = dirs.count("up"), dirs.count("down")
+            if dirs == ["up", "up", "up"] and min(d1, w1, m1) >= min_move:
                 direction = "Strong Up"
-            elif dirs == ["down", "down", "down"]:
-                if max(d1, w1, m1) > -min_move:
-                    continue
+            elif dirs == ["down", "down", "down"] and max(d1, w1, m1) <= -min_move:
                 direction = "Strong Down"
+            elif n_up >= 2 and n_dn == 0:
+                direction = "2/3 Up"
+            elif n_dn >= 2 and n_up == 0:
+                direction = "2/3 Down"
+            elif n_up or n_dn:
+                direction = "Mixed"
             else:
                 continue
             info = dmap.get(s, {})
@@ -279,6 +286,10 @@ def scan_strong_direction(fyers, symbols, min_move=0.5, progress=None):
                 "1W %": round(w1, 2),
                 "1M %": round(m1, 2),
                 "Avg %": round((d1 + w1 + m1) / 3, 2),
+                "Dir1D": dirs[0],
+                "Dir1W": dirs[1],
+                "Dir1M": dirs[2],
+                "Align": f"{max(n_up, n_dn)}/3",
                 "Direction": direction,
                 "DeliveryPct": dp,
                 "QtyTraded": info.get("qty"),
